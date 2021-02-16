@@ -1,0 +1,760 @@
+html,
+body,
+#cesiumContainer {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+    font-family: "MS Pゴシック", sans-serif;
+    background-color: black;
+}
+
+#twCounter {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    margin-top: 30px;
+    margin-left: -100px;
+    z-index: 10100;
+    opacity: 1;
+}
+
+.twCounter {
+    color: orange;
+    font-size: 16px;
+    text-align: center;
+}
+
+/*コンテンツ表示*/
+
+#tweetMessage {
+    position: absolute;
+    top: -100px;
+    left: -500px;
+    height: auto;
+    width: 320px;
+    z-index: 20000;
+    color: #cccccc;
+    background-color: rgba(0, 0, 0, 0.75);
+    padding: 10px 5px;
+    outline: solid 1px rgba(255, 255, 255, 0.2);
+}
+
+.tweettext {
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.cesium-home-button {
+    visibility: hidden;
+}
+
+.cesium-viewer-toolbar {
+    top: 6px;
+    right: 52px;
+}
+
+.cesium-toolbar-button {
+    width: 36px;
+    height: 36px;
+}
+
+.cesium-baseLayerPicker-dropDown {
+    right: -100px;
+}
+
+.cesium-baseLayerPicker-dropDown-visible {
+    right: -100px;
+    z-index: 20000;
+}
+
+.cesium-infoBox-iframe {
+    width: 320px;
+    overflow: hidden;
+    padding: 0px;
+    margin: 0px;
+    z-index: 10001;
+}
+
+.cesium-infoBox {
+    width: 320px;
+    overflow: hidden;
+    padding: 0px;
+    margin: 0px;
+    z-index: 10001;
+    background-color: rgba(255, 255, 255, 0.9);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.cesium-infoBox-visible {
+    opacity: 0.75;
+    width: 320px;
+    overflow: hidden;
+    padding: 5px;
+    margin: 0px;
+    z-index: 10001;
+    overflow-y: auto;
+    background-color: #aaa;
+    -webkit-overflow-scrolling: touch;
+}
+
+.cesium-infoBox-title {
+    display: none;
+    padding: 5px 24px;
+    overflow: hidden;
+    color: #000;
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+.cesium-widget-credits {
+    display: none;
+}
+
+.cesium-button {
+    color: rgb(180, 180, 180);
+    fill: rgb(180, 180, 180);
+    cursor: pointer;
+    right: 50px;
+    top: 6px;
+    position: absolute;
+}
+
+button.cesium-infoBox-close {
+    color: #aaa;
+}
+
+.cesium-selection-wrapper svg {
+    fill: #FFF;
+    stroke: #FFF;
+    stroke-width: 0px;
+    opacity: 0.7;
+}
+
+/*ボタン群*/
+
+
+#buttonAbout {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10005;
+    opacity: 0.8;
+}
+
+#buttonGeo {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    margin-left: -20px;
+    opacity: 0.9;
+}
+
+h2 {
+    font-size: 13px;
+    font-weight: bold;
+    text-align: center;
+}
+
+a {
+    color: #333;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #333;
+    background: gray;
+}
+
+#slide_menu {
+    position: fixed;
+    top: 48px;
+    left: -200px;
+    width: 80px;
+    opacity: 0.8;
+    padding: 0px 0px 20px 0px;
+    margin: 0px;
+    margin-bottom: 0px;
+    background: white;
+    text-align: center;
+    -moz-border-radius: 3px;
+    -webkit-border-radius: 3px;
+    border-radius: 3px;
+}
+
+#slide_menu2 {
+    position: fixed;
+    top: 48px;
+    right: -200px;
+    width: 100px;
+    opacity: 0.8;
+    padding: 10px 10px 0px 10px;
+    margin: 0px;
+    margin-bottom: 0px;
+    background: white;
+    text-align: left;
+    -moz-border-radius: 3px;
+    -webkit-border-radius: 3px;
+    border-radius: 3px;
+    z-index: 10005;
+}
+
+.viewpoint {
+    padding: 0;
+    margin: 20px 0px 0px 0px;
+    font-size: 12px;
+    list-style-type: none;
+    line-height: 1.7em;
+    text-indent: 0px;
+    background: white;
+}
+
+.viewpoint {
+    padding: 0;
+    margin: 20px 0px 0px 0px;
+    font-size: 10px;
+    list-style-type: none;
+    line-height: 1.7em;
+    text-indent: 0px;
+    background: white;
+}
+
+.slide_label {
+    font-size: 11px;
+    margin: 0px 0px 2px 0px;
+    padding: 0px;
+    height: 12px;
+}
+
+#slider {
+    position: absolute;
+    width: 100px;
+    top: 5px;
+    background: none repeat scroll 0% 0% transparent;
+    z-index: 10001;
+    right: 98px;
+}
+
+#modeChange {
+    text-align: center;
+    position: absolute;
+    right: 100px;
+    top: 8px;
+    z-index: 10010;
+    background: #303336;
+    color: #EEE;
+    width: 38px;
+    height: 36px;
+    line-height: 36px;
+    font-size: 18px;
+    border-radius: 5px;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+}
+
+#modeChange:hover {
+    transition: all 0ms;
+    -moz-transition: all 0ms;
+    -webkit-transition: all 0ms;
+    -o-transition: all 0ms;
+    background-color: #373a3e;
+    box-shadow: 0px 1.2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+#modeChange:hover:before {
+    border-bottom: 1px solid rgba(12, 12, 13, 0);
+    transition: all 0ms;
+    -moz-transition: all 0ms;
+    -webkit-transition: all 0ms;
+    -o-transition: all 0ms;
+    box-shadow: 0px 1.2px 0px 0px rgba(0, 0, 0, 1);
+}
+
+/*ジオコーダ*/
+
+input {
+    margin: 2px 0px 0px 0px;
+    padding: 0px;
+    width: 100px !important;
+}
+
+#textSearch {
+    opacity: 1.0;
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 10001;
+}
+
+#geocode {
+    opacity: 1.0;
+    position: absolute;
+    top: 32px;
+    left: 8px;
+    z-index: 10001;
+}
+
+.textbox {
+    border: 0;
+    margin: 0px;
+    padding: 0px 0px 1px 2px;
+    font-size: 12px;
+    width: 100px;
+    height: 15px;
+}
+
+
+/*タイトルスクリーン*/
+
+.titleScreen {
+    position: absolute;
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+    display: table;
+    z-index: 10002;
+    background-color: rgba(0, 0, 0, 0);
+    opacity: 0.9;
+}
+
+.titleScreen p {
+    display: table-cell;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.titleImage {
+    width: 640px;
+}
+
+#blackOut {
+    position: absolute;
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+    background: black;
+    z-index: 10002;
+    opacity: 0.5;
+}
+
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-top: -40px;
+    margin-left: -40px;
+}
+
+/*フォトオーバレイ関連*/
+
+#photoContainer {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 100%;
+    height: 100%;
+    z-index: 10003;
+}
+
+#photoBox {
+    -webkit-filter: saturate(0%);
+    -moz-filter: saturate(0%);
+    -o-filter: saturate(0%);
+    -ms-filter: saturate(0%);
+    filter: saturate(0%);
+    transition: all 300ms 0s ease;
+}
+
+#photoBox:hover {
+    -webkit-filter: saturate(100%);
+    -moz-filter: saturate(100%);
+    -o-filter: saturate(100%);
+    -ms-filter: saturate(100%);
+    filter: saturate(100%);
+}
+
+.photograph {
+    -webkit-box-shadow: 0 0 15px rgba(0, 0, 0, 1);
+    -moz-box-shadow: 0 0 15px rgba(0, 0, 0, 1);
+    box-shadow: 0 0 15px rgba(0, 0, 0, 1);
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    margin: auto;
+    max-width: 95%;
+    max-height: 80%;
+}
+
+#descriptionContainer {
+    position: absolute;
+    bottom: 0px;
+    left: 0px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 5px 10px 5px;
+    z-index: 10000;
+    opacity: 0.9;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.colorize_credit {
+    position: absolute;
+    width: 100%;
+    font-size: 10px;
+    text-align: center;
+    top: 42px;
+    color: white;
+    opacity: 0.6;
+}
+
+.id {
+    display: none;
+}
+
+.photographer {
+    color: white;
+    font-size: 11px;
+    line-height: 1em;
+    font-weight: bold;
+}
+
+.photographer_en {
+    color: white;
+    font-size: 11px;
+    line-height: 1em;
+    font-weight: bold;
+}
+
+.photograph_text {
+    color: white;
+    font-size: 11px;
+    line-height: 1em;
+    margin: 0px 10px 5px 5px;
+}
+
+/* ストリートビュー関連 */
+
+#streetView_wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 20000;
+}
+
+#streetView {
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: auto;
+}
+
+.btn {
+    position: absolute;
+    left: 90%;
+    bottom: 90%;
+    background: #3498db;
+    background-image: -webkit-linear-gradient(top, #3498db, #2980b9);
+    background-image: -moz-linear-gradient(top, #3498db, #2980b9);
+    background-image: -ms-linear-gradient(top, #3498db, #2980b9);
+    background-image: -o-linear-gradient(top, #3498db, #2980b9);
+    background-image: linear-gradient(to bottom, #3498db, #2980b9);
+    -webkit-border-radius: 28px;
+    -moz-border-radius: 28px;
+    border-radius: 28px;
+    font-family: Arial;
+    color: #ffffff;
+    font-size: 24px;
+    padding: 5px 12px 5px 12px;
+    text-decoration: none;
+}
+
+.btn:hover {
+    background: #3cb0fd;
+    background-image: -webkit-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -moz-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -ms-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -o-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: linear-gradient(to bottom, #3cb0fd, #3498db);
+    text-decoration: none;
+}
+
+/* ストビュー利用不可メッセージ */
+
+#svNotAvailable {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    z-index: 10010;
+}
+
+.errorMessage {
+    position: absolute;
+    top: 50%;
+    width: 100%;
+    text-align: center;
+    margin-top: -1em;
+}
+
+
+/*=========================================
+modalWindow
+=========================================*/
+
+.modal-window {
+    -webkit-transform: translate(0, 100%);
+    -moz-transform: translate(0, 100%);
+    -o-transform: translate(0, 100%);
+    -ms-transform: translate(0, 100%);
+    transform: translate(0, 100%);
+    -webkit-transform: translate3d(0, 100%, 0);
+    transform: translate3d(0, 100%, 0);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    opacity: 0;
+    line-height: 1.3;
+    display: none\9;
+    border-radius: 4px;
+}
+
+.modal-window:target {
+    -webkit-transform: translate(0, 0);
+    -moz-transform: translate(0, 0);
+    -o-transform: translate(0, 0);
+    -ms-transform: translate(0, 0);
+    transform: translate(0, 0);
+    opacity: 0.9;
+}
+
+.is-active.modal-window {
+    display: block\9;
+}
+
+.modal-window:target {
+    display: block\9;
+}
+
+.modal-window .modal-inner {
+    position: absolute;
+    top: 89px;
+    left: 50%;
+    z-index: 20;
+    margin-left: -155px;
+    width: 310px;
+    overflow-x: hidden;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    -webkit-box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+}
+
+.modal-window .modal-inner p {
+    padding: 0 20px;
+}
+
+.modal-window .modal-close {
+    display: block;
+    text-indent: -100px;
+    overflow: hidden;
+}
+
+.modal-window .modal-close:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-window .modal-close:after {
+    content: '\00d7';
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    z-index: 20;
+    margin-left: 129px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+    padding: 2px 8px;
+    font-size: 1.2em;
+    text-decoration: none;
+    text-indent: 0;
+    opacity: 0.6;
+}
+
+.modal-window {
+    -webkit-transition: opacity 1s;
+    -o-transition: opacity 1s;
+    transition: opacity 1s;
+}
+
+.support {
+    z-index: 100000;
+    position: absolute;
+    bottom: 0px;
+    left: 0px;
+    font-size: 10px;
+    line-height: 10px;
+    text-align: center;
+    margin: 4px;
+    padding: 2px;
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.crowdFundingTxt {
+    font-size: 12px;
+    text-align: center;
+    margin: 5px 0px;
+    text-align: center;
+    padding: 0;
+}
+
+/*メッセージ投稿DIV*/
+
+#messageSubmission {
+    opacity: 0.95;
+    position: absolute;
+    right: -320px;
+    bottom: 8px;
+    width: 320px;
+    height: 100px;
+    z-index: 10000;
+    border-top-left-radius: 5px;
+    -webkit-border-top-left-radius: 5px;
+    -moz-border-top-left-radius: 5px;
+    border-bottom-left-radius: 5px;
+    -webkit-border-bottom-left-radius: 5px;
+    -moz-border-bottom-left-radius: 5px;
+    box-shadow: 0px 0px 3px 3px #000;
+    -webkit-box-shadow: 0px 0px 4px 2px #000;
+    -moz-box-shadow: 0px 0px 3px 3px #000;
+    background: white;
+    padding: 5px 0px 0px 0px;
+    z-index: 20000;
+}
+
+table {
+    margin: 3px 0px 0px 0px;
+}
+
+div.message {
+    position: absolute;
+    text-align: center;
+    font-size: 8px;
+    bottom: 2px;
+    right: 2px;
+}
+
+div.submission {
+    width: 100%;
+    position: absolute;
+    bottom: -1000;
+    z-index: 10001;
+    background-color: #fafafa;
+    padding: 2px 0px 0px 0px;
+    opacity: 0.9;
+}
+
+div.submit {
+    text-align: center;
+    font-size: 9px;
+    width: 100%;
+}
+
+.pastmessage {
+    font-size: 12px;
+    text-align: center;
+    margin: 7px;
+}
+
+td.name {
+    color: #333;
+    font-size: 10px;
+    text-align: right;
+}
+
+td.message {
+    color: #333;
+    font-size: 10px;
+    text-align: right;
+}
+
+input.menu {
+    vertical-align: -0.1em;
+}
+
+textarea.text {
+    color: #333;
+    border: 1px solid #999999;
+    padding: 0px;
+    background-color: #EEE;
+    font-size: 12px;
+    resize: none;
+    width: 300px;
+    margin-left: 10px;
+}
+
+input.submit {
+    padding: 0px;
+    margin: 0px;
+    font-size: 12px;
+    background-color: white;
+    color: #333;
+    border-style: solid;
+    font-weight: bold;
+    -webkit-appearance: none;
+    border-radius: 0;
+}
+
+.hiddenIframe {
+    position: absolute;
+    right: 2000000;
+    opacity: 0;
+}
+
+.tweetCheck {
+    position: absolute;
+    bottom: 9px;
+    right: 8px;
+    width: 60px;
+    text-align: right;
+    opacity: 0.9;
+}
+
+.tweetCheckBox {
+    position: absolute;
+    bottom: 0px;
+    right: -50px;
+}
+
+.tweetLabel {
+    font-size: 12px;
+    position: absolute;
+    bottom: 0px;
+    right: 1px;
+}

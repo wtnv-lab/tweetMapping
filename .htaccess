@@ -1,0 +1,19 @@
+SetOutputFilter DEFLATE
+BrowserMatch ^Mozilla/4 gzip-only-text/html
+BrowserMatch ^Mozilla/4\.0[678] no-gzip
+BrowserMatch \bMSI[E] !no-gzip !gzip-only-text/html
+SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|ico)$ no-gzip dont-vary
+Header append Vary User-Agent env=!dont-vary
+
+<IfModule mod_headers.c>
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType image/jpeg "access plus 4 weeks"
+ExpiresByType image/png "access plus 4 weeks"
+ExpiresByType text/javascript "access plus 4 weeks"
+ExpiresByType application/x-javascript "access plus 4 weeks"
+ExpiresByType application/javascript "access plus 4 weeks"
+ExpiresByType application/vnd.google-earth.kmz "access plus 4 weeks"
+ExpiresByType application/vnd.geo+json "access plus 4 weeks"
+</IfModule>
+</IfModule>
