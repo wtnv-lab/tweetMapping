@@ -512,6 +512,7 @@
 						var windowWidth = $(window).width();
 						$(function () {
 							$(window).click(function (e) {
+								$(window).off("click");
 								var rightMargin = windowWidth - e.pageX;
 								$(tweetMessage).html(text);
 								if (getDevice() != 1) {
