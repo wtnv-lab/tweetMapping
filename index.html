@@ -473,6 +473,8 @@
 		//コンテンツバルーン表示
 		function descriptionBalloon() {
 
+			window.removeEventListener;
+
 			//入力フォーム，ボタンクリック時にバルーンを隠す
 			$('.functions,.general-button').click(function () {
 				$(tweetMessage).hide();
@@ -504,6 +506,7 @@
 					if (distanceLongitude < 90) {
 						var pickedObjectId = pickedObject.id.toString();
 						$(tweetMessage).fadeIn(200);
+						adjustDivPosition();
 						var targetObject = jsonArray.find((n) => n.id === pickedObjectId);
 						text = targetObject.text;
 						var windowWidth = $(window).width();
@@ -523,13 +526,11 @@
 											left: e.pageX + 8
 										});
 									}
-									adjustDivPosition();
 								} else {
 									$(tweetMessage).offset({
 										top: e.pageY + 8,
 										left: windowWidth * 0.5 - 160
 									});
-									adjustDivPosition();
 								}
 							});
 						});
