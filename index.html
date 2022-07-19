@@ -258,10 +258,8 @@
 			var imageryViewModels = [];
 
 			//ArcGIS Maps
-			var satelliteMap = new Cesium.ArcGisMapServerImageryProvider({
-				url: '//server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
-				enablePickFeatures: false,
-				shadows: true
+			var satelliteMap = new Cesium.createWorldImagery({
+				style: Cesium.IonWorldImageryStyle.AERIAL,
 			});
 
 			//GSI淡色地図
