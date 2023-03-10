@@ -403,7 +403,7 @@
 
 				var jsonFile = "data/czml/tweets.json";
 				$.getJSON(jsonFile, function (json) {
-					for (var i = 0; i < 200; i++) {
+					for (var i = 0; i < 50; i++) {
 						if (jsonNum >= json.length) {
 							clearInterval(timer);
 							delete jsonFile;
