@@ -493,6 +493,7 @@
 				fadeInOut(loadingDiv, 0);
 				changeViewPoint(2, 3);
 			}, 1000);
+			delete timer;
 			descriptionBalloon();
 			loadingDiv.innerHTML = "<p class='twCounter'>Completed.</p>";
 		}
