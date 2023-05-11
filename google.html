@@ -1,0 +1,725 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="https://www.w3.org/1999/xhtml">
+
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+	<meta name="description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートのデジタルアーカイブ" />
+
+	<!-- 新規設置の際はURLの変更が必要 -->
+	<meta property="og:image" content="https://tweet.mapping.jp/data/screen.jpg" />
+
+	<meta property="og:description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートのデジタルアーカイブ" />
+	<meta name="twitter:card" content="summary_large_image" />
+
+	<!-- 新規設置の際はIDの変更が必要 -->
+	<meta name="twitter:site" content="@hwtnv" />
+	<meta name="twitter:creator" content="@hwtnv" />
+
+	<meta name="twitter:title" content="東日本大震災ツイートマッピング" />
+	<meta name="twitter:description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートのデジタルアーカイブ" />
+
+	<!-- 新規設置の際はURLの変更が必要 -->
+	<meta name="twitter:image" content="https://tweet.mapping.jp/data/screen.jpg" />
+	<meta name="viewport"
+		content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+	<title>東日本大震災ツイートマッピング</title>
+	<link rel="SHORTCUT ICON" href="https://shinsai.mapping.jp/favicon.ico">
+	<style>
+		@import url(Cesium/Widgets/widgets.css);
+	</style>
+	<link rel="stylesheet" type="text/css" media="all" href="./css/style.css" />
+	<link rel="stylesheet" type="text/css" media="all" href="./css/menubutton.css" />
+	<script src="js/jquery-2.1.3.min.js"></script>
+	<script src="Cesium/Cesium.js"></script>
+	<script src="https://www.google.com/jsapi"></script>
+
+	<!-- 新規設置の際はGoogle Analytics IDの変更が必要 -->
+	<script>
+		(function (i, s, o, g, r, a, m) {
+			i['GoogleAnalyticsObject'] = r;
+			i[r] = i[r] || function () {
+				(i[r].q = i[r].q || []).push(arguments)
+			}, i[r].l = 1 * new Date();
+			a = s.createElement(o),
+				m = s.getElementsByTagName(o)[0];
+			a.async = 1;
+			a.src = g;
+			m.parentNode.insertBefore(a, m)
+		})(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
+
+		ga('create', 'UA-93496169-1', 'auto');
+		ga('send', 'pageview');
+	</script>
+</head>
+
+<body>
+	<div id="geocode" class="functions">
+		<form action="javascript:geocode()" class="textbox" />
+		<input id="inputtext" class="textbox" type="text" value="" placeholder="地名で検索" />
+		</form>
+	</div>
+	<div id="textSearch" class="functions">
+		<form action="javascript:textSearch()" class="textbox" />
+		<input id="searchQuery" class="textbox" type="text" value="" placeholder="テキスト検索" />
+		</form>
+	</div>
+	<div class="titleScreen">
+		<p>
+			<img class="titleImage" src="data/logo.png">
+		</p>
+	</div>
+	<div id="blackOut">
+		<img class="loading" src="data/loading.gif">
+	</div>
+	<div id="cesiumContainer"></div>
+	<div id="baseLayerPickerContainer" class="functions"></div>
+	<div id="tweetMessage"></div>
+	<div id="buttonAbout" class="general-button" onclick="about();">
+		<div class="button-content">
+			<span class="icon-font">help</span>
+		</div>
+	</div>
+	<div id="buttonGeo" class="general-button" onclick="flyToMyLocation();">
+		<div class="button-content">
+			<span class="icon-font">geo</span>
+		</div>
+	</div>
+	<div id="twCounter" class="twCounter">
+		<p>Loading...</p>
+	</div>
+	<script>
+
+		//Google Maps API
+		var script = document.createElement('script');
+		script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyA1ickfM1K2hRuG2TXuh78QrgTAkAF6bNE&callback=initMap';
+		script.async = true;
+		window.initMap = function () {
+		};
+		document.head.appendChild(script);
+
+		//Token設定
+		Cesium.Ion.defaultAccessToken =
+			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwYzlmN2I3NC0wYjM5LTQ3MTEtYTRlNC1mOWQ2NTk0OGM1N2YiLCJpZCI6ODM3NDEsImlhdCI6MTY0NTc2NzI0MX0.t-6-Ldyh0NP-ufNskRzO4HlniPQC5Yafi7MrlceCb5g';
+		Cesium.GoogleMaps.defaultApiKey = "AIzaSyA1ickfM1K2hRuG2TXuh78QrgTAkAF6bNE";
+
+		//視点配列
+		var viewPointsArray = [];
+
+		function viewPoints(_label, _lat, _lng, _heading, _pitch, _range) {
+			this.label = _label;
+			this.lat = _lat;
+			this.lng = _lng;
+			this.heading = _heading;
+			this.pitch = _pitch;
+			this.range = _range;
+		}
+		viewPointsArray[0] = new viewPoints("日本全体", 34.009340, 135.843524, -47, -50,
+			2000000);
+		viewPointsArray[1] = new viewPoints("東京都", 35.67623749668245, 139.75142329682316, 0, -60,
+			30000);
+		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -55, 2000);
+
+		//画面サイズ判別
+		function getDevice() {
+			var ua = navigator.userAgent;
+			if (ua.indexOf('iPhone') > 0 || ua.indexOf('iPod') > 0 || ua.indexOf('Android') > 0 && ua.indexOf(
+				'Mobile') > 0) {
+				mobile = 1;
+			} else if (ua.indexOf('iPad') > 0 || ua.indexOf('Android') > 0) {
+				mobile = 2;
+			} else {
+				mobile = 0;
+			}
+			return mobile;
+		};
+
+		//画面サイズ調整
+
+		var screenAdjust = (function () {
+			var mobile = getDevice();
+			if (mobile != 1) {
+				setTimeout('resizeWindow()', 0);
+			} else {
+				$('.titleImage').css('width', '100%');
+				setTimeout('resizeWindow()', 1000);
+			}
+		})();
+
+		function resizeWindow() {
+			$(function () {
+				$(cesiumContainerDiv).css('height', '100%');
+				$(cesiumContainerDiv).css('width', '100%');
+				$(blackOutDiv).css('height', '100%');
+				$(blackOutDiv).css('height', '100%');
+			});
+			setTimeout('loadCesium()', 100);
+		}
+
+		//各種DIV
+		var cesiumContainerDiv = document.getElementById("cesiumContainer");
+		var blackOutDiv = document.getElementById("blackOut");
+		var loadingDiv = document.getElementById("twCounter");
+
+		//ビューア初期化	
+		var viewer;
+
+		//Cesiumロード
+		function loadCesium() {
+			viewer = new Cesium.Viewer(cesiumContainerDiv, {
+				//デフォルトのglobeを非表示
+				globe: false,
+				navigationHelpButton: false,
+				navigationInstructionsInitiallyVisible: false,
+				geocoder: false,
+				timeline: false,
+				animation: false,
+				sceneModePicker: false,
+				scene3DOnly: true,
+				baseLayerPicker: false,
+				requestRenderMode: true,
+				maximumRenderTimeChange: Infinity,
+				useBrowserRecommendedResolution: true
+			});
+
+			async function geGlobe() {
+				try {
+					const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+					viewer.scene.primitives.add(tileset);
+					//スタイル設定
+					tileset.style = new Cesium.Cesium3DTileStyle({
+						color: "rgba(150, 150, 150, 1)",
+					});
+
+					//LOD
+					tileset.dynamicScreenSpaceError = true;
+					tileset.dynamicScreenSpaceErrorFactor = 30;
+
+				} catch (error) {
+					console.log(`Failed to load tileset: ${error}`);
+				}
+			}
+			geGlobe();
+
+			/*
+						//デフォルトタイル削除，色を黒に
+						var globe = viewer.scene.globe;
+						globe.imageryLayers.removeAll();
+						globe.baseColor = Cesium.Color.fromCssColorString('#000000');
+			*/
+
+			//画角を80度に
+
+			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
+
+			//LOD設定
+			//viewer.scene.globe.maximumScreenSpaceError = 3;
+
+			//baseLayerPickar追加
+			//baseLayerPickerAdd();
+
+			//スワイプによるスクロール禁止
+			var cesiumDiv = document.getElementById("cesiumContainer");
+
+			function preventScroll(event) {
+				event.preventDefault();
+			}
+			cesiumDiv.addEventListener("gesturestart", preventScroll, false);
+			cesiumDiv.addEventListener("gesturechange",
+				preventScroll, false);
+			cesiumDiv.addEventListener("gestureend", preventScroll, false);
+
+			//起動シークエンス呼び出し
+			openingSequence();
+		}
+
+		//起動シークエンス
+		function openingSequence() {
+
+			fadeInOut(blackOutDiv, 0);
+			fadeInOut(loadingDiv, 0);
+
+			var sequences = Promise.resolve()
+				.then(function () {
+					return new Promise((resolve, reject) => {
+						setTimeout(() => {
+							$(function () {
+								$('.titleScreen').fadeOut(1000);
+								setTimeout(function () {
+									$('.titleScreen').remove();
+								}, 1000);
+							});
+							changeViewPoint(0, 3);
+							resolve();
+						}, 2000);
+					});
+				})
+				.then(function () {
+					return new Promise((resolve, reject) => {
+						setTimeout(() => {
+							changeViewPoint(1, 3);
+							resolve();
+						}, 3000);
+					});
+				})
+				.then(function () {
+					return new Promise((resolve, reject) => {
+						setTimeout(() => {
+							fadeInOut(blackOutDiv, 1);
+							fadeInOut(loadingDiv, 1);
+							resolve();
+						}, 3000);
+					});
+				})
+				.then(function () {
+					return new Promise((resolve, reject) => {
+						setTimeout(() => {
+							loadTweets();
+							resolve();
+						}, 1000);
+					});
+				});
+		}
+
+		//BaseLayerPicker追加
+		/*
+				function baseLayerPickerAdd() {
+					var layers = viewer.imageryLayers;
+		
+					//baseLayer配列を用意
+					var imageryViewModels = [];
+		
+					//ArcGIS Maps
+					var satelliteMap = new Cesium.createWorldImagery({
+						style: Cesium.IonWorldImageryStyle.AERIAL,
+					});
+		
+					//GSI淡色地図
+					var roadMap = new Cesium.OpenStreetMapImageryProvider({
+						url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/',
+						credit: '国土地理院',
+						minimumLevel: 5,
+						maximumLevel: 18
+					});
+		
+					//GSI標高地図
+					var terrainMap = new Cesium.OpenStreetMapImageryProvider({
+						url: 'https://cyberjapandata.gsi.go.jp/xyz/relief/',
+						credit: '国土地理院',
+						minimumLevel: 5,
+						maximumLevel: 15
+					});
+		
+					imageryViewModels.push(new Cesium.ProviderViewModel({
+						name: '航空写真',
+						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
+						creationFunction: function () {
+							setTimeout(function () {
+								layers._layers[0].brightness = 0.5;
+								shinsai2011PhotoLayer.alpha = 1;
+							}, 1);
+							return satelliteMap;
+						}
+					}));
+		
+					//GSI淡色地図
+					imageryViewModels.push(new Cesium.ProviderViewModel({
+						name: '詳細地図',
+						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/gsiGray.png'),
+						creationFunction: function () {
+							setTimeout(function () {
+								layers._layers[0].brightness = 0.25;
+								layers._layers[0].saturation = 0.2;
+								shinsai2011PhotoLayer.alpha = 0;
+							}, 1);
+							return roadMap;
+						}
+					}));
+		
+					//標高地図
+					imageryViewModels.push(new Cesium.ProviderViewModel({
+						name: '標高地図',
+						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/japanRelief.png'),
+						tooltip: '海域部は海上保安庁海洋情報部の資料を使用して作成',
+						creationFunction: function () {
+							setTimeout(function () {
+								layers._layers[0].brightness = 0.4;
+								layers._layers[0].saturation = 1.0;
+								shinsai2011PhotoLayer.alpha = 0;
+							}, 1);
+							return terrainMap;
+						}
+					}));
+		
+					//baseLayerPickerボタンを追加
+					var baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
+						globe: viewer.scene.globe,
+						imageryProviderViewModels: imageryViewModels
+					});
+		
+					//被災直後の空中写真
+					var shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
+						url: 'https://cyberjapandata.gsi.go.jp/xyz/toho1/',
+						fileExtension: 'jpg',
+						credit: '国土地理院',
+						maximumLevel: 17,
+						brightness: 0.6
+					});
+					var layers = viewer.imageryLayers;
+					var shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
+						minimumTerrainLevel: 15,
+						maximumTerrainLevel: 17,
+						brightness: 0.6
+					});
+					layers.add(shinsai2011PhotoLayer);
+				}
+		*/
+		//視点移動関数
+		function changeViewPoint(num, delay) {
+
+			//カメラパラメータ
+			var newLat = viewPointsArray[num].lat;
+			var newLng = viewPointsArray[num].lng;
+			var newHeading = Cesium.Math.toRadians(viewPointsArray[num].heading);
+			var newPitch = Cesium.Math.toRadians(viewPointsArray[num].pitch);
+			var newRange = viewPointsArray[num].range;
+			var center = Cesium.Cartesian3.fromDegrees(newLng, newLat);
+			var boundingSphere = new Cesium.BoundingSphere(center, newRange);
+			var headingPitchRange = new Cesium.HeadingPitchRange(newHeading, newPitch, newRange);
+
+			//Z軸固定
+			viewer.camera.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
+
+			//FLYTO
+			viewer.camera.flyToBoundingSphere(boundingSphere, {
+				duration: delay,
+				offset: headingPitchRange,
+				easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT
+			});
+		}
+
+		/* ここからJsonロード・ビルボード＆ラベル追加 */
+
+		// 検索用配列
+		var jsonArray = [];
+		// translucencyByDistanceのパラメータ（暫定）
+		var translucencyByDistance;
+		// 一個目のbillboard, label
+		var billboard1st;
+		var label1st;
+
+		function loadTweets() {
+
+			//ビルボード・ラベル用オブジェクト
+			var billboardCollection = new Cesium.BillboardCollection();
+			var labelCollection = new Cesium.LabelCollection();
+			var billboards = viewer.scene.primitives.add(billboardCollection);
+			var labels = viewer.scene.primitives.add(labelCollection);
+			var pixelOffset = new Cesium.Cartesian2(20.0, 0);
+			var eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
+			var scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
+			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 100000, 0.1);
+			var verticalOrigin = Cesium.VerticalOrigin.CENTER;
+
+			var jsonNum = 0;
+
+			//JSON読み込み，ビルボード・ラベル追加
+			var timer = setInterval(function () {
+
+				//スマホとその他でスライス文字数を変える
+				if (getDevice == 1) {
+					var sliceText = 10;
+				} else {
+					sliceText = 20;
+				}
+
+				var jsonFile = "data/czml/tweets.json";
+				$.getJSON(jsonFile, function (json) {
+					for (var i = 0; i < 50; i++) {
+						if (jsonNum >= json.length) {
+							clearInterval(timer);
+							delete jsonFile;
+							finishLoading();
+							break;
+						} else {
+							var id = json[jsonNum].id;
+							var text = json[jsonNum].text;
+							if (text.length > sliceText) {
+								var name = text.slice(0, sliceText) + "...";
+							} else {
+								name = text;
+							}
+							var iconUrl = json[jsonNum].billboard.image;
+							var positions = json[jsonNum].position.cartographicDegrees;
+							positions[2] = 200 + 500 * Math.random();
+							var positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(
+								positions)[0];
+
+							//ビルボード・ラベル追加
+
+							if (i == 0) {
+								billboardsAdd = billboards.add({
+									id: id,
+									position: positionsCartesian3,
+									image: "data/icon/flags/" + iconUrl,
+									scale: 0.25,
+									//eyeOffset: eyeOffset,
+									translucencyByDistance: translucencyByDistance,
+								});
+								labelAdd = labels.add({
+									id: id,
+									position: positionsCartesian3,
+									font: "11pt Sans-Serif",
+									style: Cesium.LabelStyle.FILL,
+									fillColor: Cesium.Color.WHITE,
+									pixelOffset: pixelOffset,
+									//eyeOffset: eyeOffset,
+									text: name,
+									scaleByDistance: scaleByDistance,
+									verticalOrigin: verticalOrigin,
+									translucencyByDistance: translucencyByDistance
+								});
+							} else {
+								//2個め以降は1個目のオブジェクトのプロパティを流用する
+								billboard1st = viewer.scene.primitives._primitives[1]._billboards[0];
+								label1st = viewer.scene.primitives._primitives[2]._labels[0];
+								billboardsAdd = billboards.add({
+									id: id,
+									position: positionsCartesian3,
+									image: billboard1st.image,
+									scale: billboard1st.scale,
+									//eyeOffset: billboard1st.eyeOffset,
+									translucencyByDistance: billboard1st.translucencyByDistance
+								});
+								labelAdd = labels.add({
+									id: id,
+									position: positionsCartesian3,
+									font: label1st.font,
+									style: label1st.style,
+									fillColor: label1st.fillColor,
+									pixelOffset: label1st.pixelOffset,
+									//eyeOffset: label1st.eyeOffset,
+									text: name,
+									scaleByDistance: label1st.scaleByDistance,
+									verticalOrigin: label1st.verticalOrigin,
+									translucencyByDistance: label1st.translucencyByDistance
+								});
+							}
+
+							//検索用配列に追加
+							jsonArray.push({
+								id: id,
+								text: text
+							});
+
+							//読み込み件数表示
+							jsonNum++;
+							loadingDiv.innerHTML = "<p>" + jsonNum + "/" + json.length + "</p>";
+						}
+					}
+				});
+				viewer.scene.requestRender();
+			}, 10);
+		}
+
+		//ロード完了
+		function finishLoading() {
+			setTimeout(function () {
+				fadeInOut(blackOutDiv, 0);
+				fadeInOut(loadingDiv, 0);
+				changeViewPoint(2, 3);
+			}, 1000);
+			delete timer;
+			descriptionBalloon();
+			loadingDiv.innerHTML = "<p class='twCounter'>Completed.</p>";
+		}
+
+		//コンテンツバルーン表示
+		function descriptionBalloon() {
+
+			window.removeEventListener;
+
+			//入力フォーム，ボタンクリック時にバルーンを隠す
+			$('.functions,.general-button').click(function () {
+				$(tweetMessage).hide();
+			});
+
+			//カメラ移動時にバルーンを隠す
+			viewer.camera.changed.addEventListener(function () {
+				$(tweetMessage).fadeOut(100);
+			});
+
+			viewer.screenSpaceEventHandler.setInputAction(function onLeftClick(movement) {
+
+				// カメラ位置（経度）取得
+				var cameraPosRadians = viewer.camera.positionCartographic;
+				var cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
+
+				var pickedObject = viewer.scene.pick(movement.position);
+				var pikedObjectPos = pickedObject.primitive._position;
+
+				if (pikedObjectPos !== undefined) {
+					//　オブジェクト位置（経度）取得
+					var objectPosCartesian = pickedObject.primitive._position;
+					var objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
+					var objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
+
+					// カメラとオブジェクトの経度差（絶対値）
+					var distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
+
+					// カメラとオブジェクトの経度差が90度以内のときコンテンツバルーンを表示
+					if (distanceLongitude < 90) {
+						var pickedObjectId = pickedObject.id.toString();
+						$(tweetMessage).fadeIn(200);
+						adjustDivPosition();
+						var targetObject = jsonArray.find((n) => n.id === pickedObjectId);
+						text = targetObject.text;
+						var windowWidth = $(window).width();
+						$(function () {
+							$(window).click(function (e) {
+								$(window).off("click");
+								var rightMargin = windowWidth - e.pageX;
+								$(tweetMessage).html(text);
+								if (getDevice() != 1) {
+									if (rightMargin < 320) {
+										$(tweetMessage).offset({
+											top: e.pageY + 8,
+											left: e.pageX - 312
+										});
+									} else {
+										$(tweetMessage).offset({
+											top: e.pageY + 8,
+											left: e.pageX + 8
+										});
+									}
+								} else {
+									$(tweetMessage).offset({
+										top: e.pageY + 8,
+										left: windowWidth * 0.5 - 160
+									});
+								}
+							});
+						});
+					}
+				} else {
+					$(tweetMessage).hide();
+				}
+			}, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+		}
+
+		//コンテンツバルーンの位置調整 
+		function adjustDivPosition() {
+			setTimeout(function () {
+				var windowHeight = $(window).height();
+				var
+					pos = $(tweetMessage).offset().top;
+				var height = $(tweetMessage).height();
+				if ((windowHeight - (pos + height)) < 0) {
+					$(tweetMessage).offset({
+						top: windowHeight - height - 12
+					});
+				}
+			}, 200);
+		}
+
+		/* ここまでJsonロード・ビルボード＆ラベル追加 */
+
+		//ジオコード
+		function geocode() {
+			var geocoder = new google.maps.Geocoder();
+			var input = document.getElementById('inputtext').value;
+			geocoder.geocode({
+				address: input
+			},
+				function (results, status) {
+					if (status == google.maps.GeocoderStatus.OK) {
+						var viewportObj = results[0].geometry.viewport;
+						var southNorth = viewportObj[Object.keys(viewportObj)[0]];
+						var westEast = viewportObj[Object.keys(viewportObj)[1]];
+						var south = southNorth[Object.keys(southNorth)[0]];
+						var north = southNorth[Object.keys(southNorth)[1]];
+						var west = westEast[Object.keys(westEast)[0]];
+						var east = westEast[Object.keys(westEast)[1]];
+						var rectangle = Cesium.Rectangle.fromDegrees(west, south, east, north);
+						viewer.camera.flyTo({
+							destination: rectangle,
+							easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT
+						});
+					} else {
+						alert('見つかりません');
+					}
+				}
+			);
+		}
+
+		//現在地へ移動
+		function flyToMyLocation() {
+			function fly(position) {
+				viewer.camera.flyTo({
+					destination: Cesium.Cartesian3.fromDegrees(position.coords.longitude, position.coords
+						.latitude,
+						3000.0),
+					easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT
+				});
+			}
+			navigator.geolocation.getCurrentPosition(fly);
+		}
+
+
+		//テキスト検索
+		function textSearch() {
+			$(tweetMessage).hide();
+			var searchQuery = String(document.getElementById('searchQuery').value);
+			var targetObject = jsonArray.filter(function (obj) {
+				return obj.text.match(searchQuery);
+			});
+			var billboardsObject = viewer.scene.primitives._primitives[1]._billboards;
+			var labelsObject = viewer.scene.primitives._primitives[2]._labels;
+
+			for (var i = 0; i < billboardsObject.length; i++) {
+				// カラ検索で初期化
+				if (searchQuery == "") {
+					billboardsObject[i].show = true;
+					labelsObject[i].show = true;
+					billboardsObject[i].translucencyByDistance = translucencyByDistance;
+					labelsObject[i].translucencyByDistance = translucencyByDistance;
+				} else {
+					// 文字列が含まれるビルボードのみアクティブにする
+					if (targetObject.find((v) => v.id === billboardsObject[i]._id)) {
+						billboardsObject[i].show = true;
+						labelsObject[i].show = true;
+						billboardsObject[i].translucencyByDistance = undefined;
+						labelsObject[i].translucencyByDistance = undefined;
+					} else {
+						billboardsObject[i].show = false;
+						labelsObject[i].show = false;
+					}
+				}
+			}
+			viewer.scene.requestRender();
+		}
+
+		//DIVのフェードイン・アウト
+		function fadeInOut(layer, param) {
+			if (param == 0) {
+				$(function () {
+					$(layer).fadeOut("slow");
+				});
+				viewer.trackedEntity = undefined;
+			} else {
+				$(function () {
+					$(layer).fadeIn("slow");
+				});
+			}
+		}
+
+		//ヘルプ
+		function about() {
+			window.open(
+				'https://github.com/wtnv-lab/tweetMapping'
+			);
+		}
+	</script>
+</body>
+
+</html>
