@@ -1,0 +1,100 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
+.cesium-infoBox-description {
+    font-family: sans-serif;
+    font-size: 13px;
+    color: #31323c;
+    overflow: hidden;
+}
+
+.cesium-infoBox-description a:link,
+a:visited,
+a:hover,
+a:active {
+    color: #31323c;
+}
+
+.cesium-infoBox-description table {
+    color: #31323c;
+}
+
+.cesium-infoBox-defaultTable {
+    width: 100%;
+    color: #31323c;
+}
+
+.cesium-infoBox-defaultTable tr:nth-child(odd) {
+    background-color: rgba(84, 84, 84, 0.8);
+}
+
+.cesium-infoBox-defaultTable tr:nth-child(even) {
+    background-color: rgba(84, 84, 84, 0.25);
+}
+
+.cesium-infoBox-defaultTable th {
+    font-weight: normal;
+    padding: 3px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.cesium-infoBox-defaultTable td {
+    padding: 3px;
+    vertical-align: middle;
+    text-align: left;
+}
+
+.cesium-infoBox-description-lighter {
+    color: #000000;
+}
+
+.cesium-infoBox-description-lighter a:link,
+a:visited,
+a:hover,
+a:active {
+    color: #000000;
+}
+
+.cesium-infoBox-description-lighter table {
+    color: #000000;
+}
+
+.cesium-infoBox-defaultTable-lighter {
+    width: 100%;
+    color: #000000;
+}
+
+.cesium-infoBox-defaultTable-lighter tr:nth-child(odd) {
+    background-color: rgba(179, 179, 179, 0.8);
+}
+
+.cesium-infoBox-defaultTable-lighter tr:nth-child(even) {
+    background-color: rgba(179, 179, 179, 0.25);
+}
+
+.deathPlace {
+    display: none;
+}
+
+.name {
+    font-size: 16px;
+    text-align: center;
+    top: 9px;
+    font-weight: bold;
+}
+
+.place {
+    margin: 0px 10px;
+    font-size: 11px;
+    line-height: 1.5em;
+}
+
+.behavior {
+    margin: 16px 10px 5px 10px;
+    font-size: 16px;
+    line-height: 1.5em;
+    text-align: justify;
+}
