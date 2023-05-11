@@ -188,12 +188,12 @@
 					viewer.scene.primitives.add(tileset);
 					//スタイル設定
 					tileset.style = new Cesium.Cesium3DTileStyle({
-						color: "rgba(150, 150, 150, 1)",
+						color: "rgba(140, 140, 140, 1)",
 					});
 
 					//LOD
 					tileset.dynamicScreenSpaceError = true;
-					tileset.dynamicScreenSpaceErrorFactor = 30;
+					tileset.dynamicScreenSpaceErrorFactor = 24;
 
 				} catch (error) {
 					console.log(`Failed to load tileset: ${error}`);
