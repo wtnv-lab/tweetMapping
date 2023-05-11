@@ -34,6 +34,11 @@
 	<script src="Cesium/Cesium.js"></script>
 	<script src="https://www.google.com/jsapi"></script>
 
+	<!-- 新規設置の際はAPI Keyの取得が必要 -->
+	<script type="text/javascript"
+		src="https://maps.google.com/maps/api/js?key=AIzaSyCc9E-ulJKRVMPyJe_V5sUVNU8kxiDIUtg">
+		</script>
+
 	<!-- 新規設置の際はGoogle Analytics IDの変更が必要 -->
 	<script>
 		(function (i, s, o, g, r, a, m) {
@@ -89,20 +94,6 @@
 		<p>Loading...</p>
 	</div>
 	<script>
-
-		//Google Maps API
-		var script = document.createElement('script');
-		script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyA1ickfM1K2hRuG2TXuh78QrgTAkAF6bNE&callback=initMap';
-		script.async = true;
-		window.initMap = function () {
-		};
-		document.head.appendChild(script);
-
-		//Token設定
-		Cesium.Ion.defaultAccessToken =
-			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwYzlmN2I3NC0wYjM5LTQ3MTEtYTRlNC1mOWQ2NTk0OGM1N2YiLCJpZCI6ODM3NDEsImlhdCI6MTY0NTc2NzI0MX0.t-6-Ldyh0NP-ufNskRzO4HlniPQC5Yafi7MrlceCb5g';
-		Cesium.GoogleMaps.defaultApiKey = "AIzaSyA1ickfM1K2hRuG2TXuh78QrgTAkAF6bNE";
-
 		//視点配列
 		var viewPointsArray = [];
 
@@ -118,7 +109,7 @@
 			2000000);
 		viewPointsArray[1] = new viewPoints("東京都", 35.67623749668245, 139.75142329682316, 0, -60,
 			30000);
-		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -55, 2000);
+		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -60, 2000);
 
 		//画面サイズ判別
 		function getDevice() {
@@ -166,9 +157,9 @@
 
 		//Cesiumロード
 		function loadCesium() {
+			Cesium.Ion.defaultAccessToken =
+				'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzZjdkOGRkYi1hYzIxLTQ4MDMtYjZiMC0zODg5YjI2ZTRlZjIiLCJpZCI6MjgyLCJzY29wZXMiOlsiYXNsIiwiYXNyIiwiYXN3IiwiZ2MiXSwiaWF0IjoxNTYyMDEyNTIyfQ.aVsGtowVeK_5C25G5-WCK7bZHyfXUl_zQ5Ud7TKsq0U';
 			viewer = new Cesium.Viewer(cesiumContainerDiv, {
-				//デフォルトのglobeを非表示
-				globe: false,
 				navigationHelpButton: false,
 				navigationInstructionsInitiallyVisible: false,
 				geocoder: false,
@@ -182,41 +173,19 @@
 				useBrowserRecommendedResolution: true
 			});
 
-			async function geGlobe() {
-				try {
-					const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-					viewer.scene.primitives.add(tileset);
-					//スタイル設定
-					tileset.style = new Cesium.Cesium3DTileStyle({
-						color: "rgba(150, 150, 150, 1)",
-					});
-
-					//LOD
-					tileset.dynamicScreenSpaceError = true;
-					tileset.dynamicScreenSpaceErrorFactor = 30;
-
-				} catch (error) {
-					console.log(`Failed to load tileset: ${error}`);
-				}
-			}
-			geGlobe();
-
-			/*
-						//デフォルトタイル削除，色を黒に
-						var globe = viewer.scene.globe;
-						globe.imageryLayers.removeAll();
-						globe.baseColor = Cesium.Color.fromCssColorString('#000000');
-			*/
+			//デフォルトタイル削除，色を黒に
+			var globe = viewer.scene.globe;
+			globe.imageryLayers.removeAll();
+			globe.baseColor = Cesium.Color.fromCssColorString('#000000');
 
 			//画角を80度に
-
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
 
 			//LOD設定
-			//viewer.scene.globe.maximumScreenSpaceError = 3;
+			viewer.scene.globe.maximumScreenSpaceError = 3;
 
 			//baseLayerPickar追加
-			//baseLayerPickerAdd();
+			baseLayerPickerAdd();
 
 			//スワイプによるスクロール禁止
 			var cesiumDiv = document.getElementById("cesiumContainer");
@@ -282,98 +251,98 @@
 		}
 
 		//BaseLayerPicker追加
-		/*
-				function baseLayerPickerAdd() {
-					var layers = viewer.imageryLayers;
-		
-					//baseLayer配列を用意
-					var imageryViewModels = [];
-		
-					//ArcGIS Maps
-					var satelliteMap = new Cesium.createWorldImagery({
-						style: Cesium.IonWorldImageryStyle.AERIAL,
-					});
-		
-					//GSI淡色地図
-					var roadMap = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/',
-						credit: '国土地理院',
-						minimumLevel: 5,
-						maximumLevel: 18
-					});
-		
-					//GSI標高地図
-					var terrainMap = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/relief/',
-						credit: '国土地理院',
-						minimumLevel: 5,
-						maximumLevel: 15
-					});
-		
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '航空写真',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.5;
-								shinsai2011PhotoLayer.alpha = 1;
-							}, 1);
-							return satelliteMap;
-						}
-					}));
-		
-					//GSI淡色地図
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '詳細地図',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/gsiGray.png'),
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.25;
-								layers._layers[0].saturation = 0.2;
-								shinsai2011PhotoLayer.alpha = 0;
-							}, 1);
-							return roadMap;
-						}
-					}));
-		
-					//標高地図
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '標高地図',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/japanRelief.png'),
-						tooltip: '海域部は海上保安庁海洋情報部の資料を使用して作成',
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.4;
-								layers._layers[0].saturation = 1.0;
-								shinsai2011PhotoLayer.alpha = 0;
-							}, 1);
-							return terrainMap;
-						}
-					}));
-		
-					//baseLayerPickerボタンを追加
-					var baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
-						globe: viewer.scene.globe,
-						imageryProviderViewModels: imageryViewModels
-					});
-		
-					//被災直後の空中写真
-					var shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/toho1/',
-						fileExtension: 'jpg',
-						credit: '国土地理院',
-						maximumLevel: 17,
-						brightness: 0.6
-					});
-					var layers = viewer.imageryLayers;
-					var shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
-						minimumTerrainLevel: 15,
-						maximumTerrainLevel: 17,
-						brightness: 0.6
-					});
-					layers.add(shinsai2011PhotoLayer);
+
+		function baseLayerPickerAdd() {
+			var layers = viewer.imageryLayers;
+
+			//baseLayer配列を用意
+			var imageryViewModels = [];
+
+			//ArcGIS Maps
+			var satelliteMap = new Cesium.createWorldImagery({
+				style: Cesium.IonWorldImageryStyle.AERIAL,
+			});
+
+			//GSI淡色地図
+			var roadMap = new Cesium.OpenStreetMapImageryProvider({
+				url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/',
+				credit: '国土地理院',
+				minimumLevel: 5,
+				maximumLevel: 18
+			});
+
+			//GSI標高地図
+			var terrainMap = new Cesium.OpenStreetMapImageryProvider({
+				url: 'https://cyberjapandata.gsi.go.jp/xyz/relief/',
+				credit: '国土地理院',
+				minimumLevel: 5,
+				maximumLevel: 15
+			});
+
+			imageryViewModels.push(new Cesium.ProviderViewModel({
+				name: '航空写真',
+				iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
+				creationFunction: function () {
+					setTimeout(function () {
+						layers._layers[0].brightness = 0.5;
+						shinsai2011PhotoLayer.alpha = 1;
+					}, 1);
+					return satelliteMap;
 				}
-		*/
+			}));
+
+			//GSI淡色地図
+			imageryViewModels.push(new Cesium.ProviderViewModel({
+				name: '詳細地図',
+				iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/gsiGray.png'),
+				creationFunction: function () {
+					setTimeout(function () {
+						layers._layers[0].brightness = 0.25;
+						layers._layers[0].saturation = 0.2;
+						shinsai2011PhotoLayer.alpha = 0;
+					}, 1);
+					return roadMap;
+				}
+			}));
+
+			//標高地図
+			imageryViewModels.push(new Cesium.ProviderViewModel({
+				name: '標高地図',
+				iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/japanRelief.png'),
+				tooltip: '海域部は海上保安庁海洋情報部の資料を使用して作成',
+				creationFunction: function () {
+					setTimeout(function () {
+						layers._layers[0].brightness = 0.4;
+						layers._layers[0].saturation = 1.0;
+						shinsai2011PhotoLayer.alpha = 0;
+					}, 1);
+					return terrainMap;
+				}
+			}));
+
+			//baseLayerPickerボタンを追加
+			var baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
+				globe: viewer.scene.globe,
+				imageryProviderViewModels: imageryViewModels
+			});
+
+			//被災直後の空中写真
+			var shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
+				url: 'https://cyberjapandata.gsi.go.jp/xyz/toho1/',
+				fileExtension: 'jpg',
+				credit: '国土地理院',
+				maximumLevel: 17,
+				brightness: 0.6
+			});
+			var layers = viewer.imageryLayers;
+			var shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
+				minimumTerrainLevel: 15,
+				maximumTerrainLevel: 17,
+				brightness: 0.6
+			});
+			layers.add(shinsai2011PhotoLayer);
+		}
+
 		//視点移動関数
 		function changeViewPoint(num, delay) {
 
@@ -416,7 +385,6 @@
 			var billboards = viewer.scene.primitives.add(billboardCollection);
 			var labels = viewer.scene.primitives.add(labelCollection);
 			var pixelOffset = new Cesium.Cartesian2(20.0, 0);
-			var eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
 			var scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
 			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 100000, 0.1);
 			var verticalOrigin = Cesium.VerticalOrigin.CENTER;
@@ -451,7 +419,7 @@
 							}
 							var iconUrl = json[jsonNum].billboard.image;
 							var positions = json[jsonNum].position.cartographicDegrees;
-							positions[2] = 200 + 500 * Math.random();
+							positions[2] = 200 + 300 * Math.random();
 							var positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(
 								positions)[0];
 
@@ -463,8 +431,7 @@
 									position: positionsCartesian3,
 									image: "data/icon/flags/" + iconUrl,
 									scale: 0.25,
-									//eyeOffset: eyeOffset,
-									translucencyByDistance: translucencyByDistance,
+									translucencyByDistance: translucencyByDistance
 								});
 								labelAdd = labels.add({
 									id: id,
@@ -473,7 +440,6 @@
 									style: Cesium.LabelStyle.FILL,
 									fillColor: Cesium.Color.WHITE,
 									pixelOffset: pixelOffset,
-									//eyeOffset: eyeOffset,
 									text: name,
 									scaleByDistance: scaleByDistance,
 									verticalOrigin: verticalOrigin,
@@ -481,14 +447,13 @@
 								});
 							} else {
 								//2個め以降は1個目のオブジェクトのプロパティを流用する
-								billboard1st = viewer.scene.primitives._primitives[1]._billboards[0];
-								label1st = viewer.scene.primitives._primitives[2]._labels[0];
+								billboard1st = viewer.scene.primitives._primitives[0]._billboards[0];
+								label1st = viewer.scene.primitives._primitives[1]._labels[0];
 								billboardsAdd = billboards.add({
 									id: id,
 									position: positionsCartesian3,
 									image: billboard1st.image,
 									scale: billboard1st.scale,
-									//eyeOffset: billboard1st.eyeOffset,
 									translucencyByDistance: billboard1st.translucencyByDistance
 								});
 								labelAdd = labels.add({
@@ -498,7 +463,6 @@
 									style: label1st.style,
 									fillColor: label1st.fillColor,
 									pixelOffset: label1st.pixelOffset,
-									//eyeOffset: label1st.eyeOffset,
 									text: name,
 									scaleByDistance: label1st.scaleByDistance,
 									verticalOrigin: label1st.verticalOrigin,
@@ -556,9 +520,8 @@
 				var cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
 
 				var pickedObject = viewer.scene.pick(movement.position);
-				var pikedObjectPos = pickedObject.primitive._position;
+				if (Cesium.defined(pickedObject)) {
 
-				if (pikedObjectPos !== undefined) {
 					//　オブジェクト位置（経度）取得
 					var objectPosCartesian = pickedObject.primitive._position;
 					var objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
@@ -673,8 +636,8 @@
 			var targetObject = jsonArray.filter(function (obj) {
 				return obj.text.match(searchQuery);
 			});
-			var billboardsObject = viewer.scene.primitives._primitives[1]._billboards;
-			var labelsObject = viewer.scene.primitives._primitives[2]._labels;
+			var billboardsObject = viewer.scene.primitives._primitives[0]._billboards;
+			var labelsObject = viewer.scene.primitives._primitives[1]._labels;
 
 			for (var i = 0; i < billboardsObject.length; i++) {
 				// カラ検索で初期化
