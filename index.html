@@ -118,7 +118,7 @@
 			2000000);
 		viewPointsArray[1] = new viewPoints("東京都", 35.67623749668245, 139.75142329682316, 0, -60,
 			30000);
-		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -60, 2000);
+		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -55, 2000);
 
 		//画面サイズ判別
 		function getDevice() {
@@ -192,8 +192,9 @@
 					});
 
 					//LOD
-					//tileset.dynamicScreenSpaceError = true;
-					//tileset.dynamicScreenSpaceErrorFactor = 30;
+					tileset.dynamicScreenSpaceError = true;
+					tileset.dynamicScreenSpaceErrorFactor = 30;
+
 				} catch (error) {
 					console.log(`Failed to load tileset: ${error}`);
 				}
