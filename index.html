@@ -90,7 +90,7 @@
 	</div>
 	<script>
 
-		//Google Maps API（自分で取得したKeyに置換）
+		//Google Maps API（新規設置の際はKeyの変更が必要）
 		const script = document.createElement('script');
 		script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDmPXZNocuhvv3T6zJe9gQZF0oVrU7TuCA&callback=initMap';
 		script.async = true;
@@ -98,10 +98,10 @@
 		};
 		document.head.appendChild(script);
 
-		//自分で置換したTokenに置換
+		//新規設置の際はTokenの変更が必要
 		Cesium.Ion.defaultAccessToken =
 			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2MWQxZDNlZC0xNzY1LTRmYzctYmY2Zi05YjZlYmI2YjI2ZGUiLCJpZCI6ODM3NDEsImlhdCI6MTY4MzkzMjEzNn0.scryF4Q6q6deO3pjfPmCnZ9986voN5H89uXQqGCSPuo';
-		//自分で取得したKeyに置換
+		//新規設置の際はKeyの変更が必要
 		Cesium.GoogleMaps.defaultApiKey = "AIzaSyDmPXZNocuhvv3T6zJe9gQZF0oVrU7TuCA";
 
 		//視点配列
