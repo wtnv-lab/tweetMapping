@@ -257,6 +257,9 @@
 			function loadPhotogrammetry() {
 				//デフォルトのglobeを非表示
 				viewer.globe = false;
+				viewer.baseLayerPicker = false;
+
+				//3D Tiles読み込み
 				async function geGlobe() {
 					try {
 						const tileset = await Cesium.createGooglePhotorealistic3DTileset();
