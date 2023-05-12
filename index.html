@@ -666,8 +666,8 @@
 			let targetObject = jsonArray.filter(function (obj) {
 				return obj.text.match(searchQuery);
 			});
-			let billboardsObject = viewer.scene.primitives._primitives[1]._billboards;
-			let labelsObject = viewer.scene.primitives._primitives[2]._labels;
+			let billboardsObject = viewer.scene.primitives._primitives[0]._billboards;
+			let labelsObject = viewer.scene.primitives._primitives[1]._labels;
 
 			for (let i = 0; i < billboardsObject.length; i++) {
 				// カラ検索で初期化
