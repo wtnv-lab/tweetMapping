@@ -191,32 +191,15 @@
 						color: "rgba(140, 140, 140, 1)",
 					});
 
-					//LOD
-					// tileset.dynamicScreenSpaceError = true;
-					// tileset.dynamicScreenSpaceErrorFactor = 24;
-
 				} catch (error) {
 					console.log(`Failed to load tileset: ${error}`);
 				}
 			}
 			geGlobe();
 
-			/*
-						//デフォルトタイル削除，色を黒に
-						var globe = viewer.scene.globe;
-						globe.imageryLayers.removeAll();
-						globe.baseColor = Cesium.Color.fromCssColorString('#000000');
-			*/
-
 			//画角を80度に
 
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
-
-			//LOD設定
-			//viewer.scene.globe.maximumScreenSpaceError = 3;
-
-			//baseLayerPickar追加
-			//baseLayerPickerAdd();
 
 			//スワイプによるスクロール禁止
 			var cesiumDiv = document.getElementById("cesiumContainer");
@@ -281,99 +264,6 @@
 				});
 		}
 
-		//BaseLayerPicker追加
-		/*
-				function baseLayerPickerAdd() {
-					var layers = viewer.imageryLayers;
-		
-					//baseLayer配列を用意
-					var imageryViewModels = [];
-		
-					//ArcGIS Maps
-					var satelliteMap = new Cesium.createWorldImagery({
-						style: Cesium.IonWorldImageryStyle.AERIAL,
-					});
-		
-					//GSI淡色地図
-					var roadMap = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/',
-						credit: '国土地理院',
-						minimumLevel: 5,
-						maximumLevel: 18
-					});
-		
-					//GSI標高地図
-					var terrainMap = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/relief/',
-						credit: '国土地理院',
-						minimumLevel: 5,
-						maximumLevel: 15
-					});
-		
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '航空写真',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.5;
-								shinsai2011PhotoLayer.alpha = 1;
-							}, 1);
-							return satelliteMap;
-						}
-					}));
-		
-					//GSI淡色地図
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '詳細地図',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/gsiGray.png'),
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.25;
-								layers._layers[0].saturation = 0.2;
-								shinsai2011PhotoLayer.alpha = 0;
-							}, 1);
-							return roadMap;
-						}
-					}));
-		
-					//標高地図
-					imageryViewModels.push(new Cesium.ProviderViewModel({
-						name: '標高地図',
-						iconUrl: Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/japanRelief.png'),
-						tooltip: '海域部は海上保安庁海洋情報部の資料を使用して作成',
-						creationFunction: function () {
-							setTimeout(function () {
-								layers._layers[0].brightness = 0.4;
-								layers._layers[0].saturation = 1.0;
-								shinsai2011PhotoLayer.alpha = 0;
-							}, 1);
-							return terrainMap;
-						}
-					}));
-		
-					//baseLayerPickerボタンを追加
-					var baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
-						globe: viewer.scene.globe,
-						imageryProviderViewModels: imageryViewModels
-					});
-		
-					//被災直後の空中写真
-					var shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
-						url: 'https://cyberjapandata.gsi.go.jp/xyz/toho1/',
-						fileExtension: 'jpg',
-						credit: '国土地理院',
-						maximumLevel: 17,
-						brightness: 0.6
-					});
-					var layers = viewer.imageryLayers;
-					var shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
-						minimumTerrainLevel: 15,
-						maximumTerrainLevel: 17,
-						brightness: 0.6
-					});
-					layers.add(shinsai2011PhotoLayer);
-				}
-		*/
 		//視点移動関数
 		function changeViewPoint(num, delay) {
 
@@ -463,7 +353,6 @@
 									position: positionsCartesian3,
 									image: "data/icon/flags/" + iconUrl,
 									scale: 0.25,
-									//eyeOffset: eyeOffset,
 									translucencyByDistance: translucencyByDistance,
 								});
 								labelAdd = labels.add({
@@ -473,7 +362,6 @@
 									style: Cesium.LabelStyle.FILL,
 									fillColor: Cesium.Color.WHITE,
 									pixelOffset: pixelOffset,
-									//eyeOffset: eyeOffset,
 									text: name,
 									scaleByDistance: scaleByDistance,
 									verticalOrigin: verticalOrigin,
@@ -488,7 +376,6 @@
 									position: positionsCartesian3,
 									image: billboard1st.image,
 									scale: billboard1st.scale,
-									//eyeOffset: billboard1st.eyeOffset,
 									translucencyByDistance: billboard1st.translucencyByDistance
 								});
 								labelAdd = labels.add({
@@ -498,7 +385,6 @@
 									style: label1st.style,
 									fillColor: label1st.fillColor,
 									pixelOffset: label1st.pixelOffset,
-									//eyeOffset: label1st.eyeOffset,
 									text: name,
 									scaleByDistance: label1st.scaleByDistance,
 									verticalOrigin: label1st.verticalOrigin,
