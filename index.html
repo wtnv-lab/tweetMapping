@@ -549,53 +549,56 @@
 				let cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
 
 				let pickedObject = viewer.scene.pick(movement.position);
-				let pikedObjectPos = pickedObject.primitive._position;
+				if (pickedObject === undefined) {
+					$(tweetMessage).hide();
+				} else {
+					let pikedObjectPos = pickedObject.primitive._position;
+					if (pikedObjectPos !== undefined) {
+						//　オブジェクト位置（経度）取得
+						let objectPosCartesian = pickedObject.primitive._position;
+						let objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
+						let objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
 
-				if (pikedObjectPos !== undefined) {
-					//　オブジェクト位置（経度）取得
-					let objectPosCartesian = pickedObject.primitive._position;
-					let objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
-					let objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
+						// カメラとオブジェクトの経度差（絶対値）
+						let distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
 
-					// カメラとオブジェクトの経度差（絶対値）
-					let distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
-
-					// カメラとオブジェクトの経度差が90度以内のときコンテンツバルーンを表示
-					if (distanceLongitude < 90) {
-						let pickedObjectId = pickedObject.id.toString();
-						$(tweetMessage).fadeIn(200);
-						adjustDivPosition();
-						let targetObject = jsonArray.find((n) => n.id === pickedObjectId);
-						text = targetObject.text;
-						let windowWidth = $(window).width();
-						$(function () {
-							$(window).click(function (e) {
-								$(window).off("click");
-								let rightMargin = windowWidth - e.pageX;
-								$(tweetMessage).html(text);
-								if (getDevice() != 1) {
-									if (rightMargin < 320) {
-										$(tweetMessage).offset({
-											top: e.pageY + 8,
-											left: e.pageX - 312
-										});
+						// カメラとオブジェクトの経度差が90度以内のときコンテンツバルーンを表示
+						if (distanceLongitude < 90) {
+							let pickedObjectId = pickedObject.id.toString();
+							$(tweetMessage).fadeIn(200);
+							adjustDivPosition();
+							let targetObject = jsonArray.find((n) => n.id === pickedObjectId);
+							text = targetObject.text;
+							let windowWidth = $(window).width();
+							$(function () {
+								$(window).click(function (e) {
+									$(window).off("click");
+									let rightMargin = windowWidth - e.pageX;
+									$(tweetMessage).html(text);
+									if (getDevice() != 1) {
+										if (rightMargin < 320) {
+											$(tweetMessage).offset({
+												top: e.pageY + 8,
+												left: e.pageX - 312
+											});
+										} else {
+											$(tweetMessage).offset({
+												top: e.pageY + 8,
+												left: e.pageX + 8
+											});
+										}
 									} else {
 										$(tweetMessage).offset({
 											top: e.pageY + 8,
-											left: e.pageX + 8
+											left: windowWidth * 0.5 - 160
 										});
 									}
-								} else {
-									$(tweetMessage).offset({
-										top: e.pageY + 8,
-										left: windowWidth * 0.5 - 160
-									});
-								}
+								});
 							});
-						});
+						}
+					} else {
+						$(tweetMessage).hide();
 					}
-				} else {
-					$(tweetMessage).hide();
 				}
 			}, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 		}

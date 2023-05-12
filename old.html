@@ -520,6 +520,7 @@
                 var cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
 
                 var pickedObject = viewer.scene.pick(movement.position);
+                console.log(pickedObject);
                 if (Cesium.defined(pickedObject)) {
 
                     //　オブジェクト位置（経度）取得
