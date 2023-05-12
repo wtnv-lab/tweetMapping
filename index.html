@@ -180,14 +180,6 @@
 				useBrowserRecommendedResolution: true
 			});
 
-			//デフォルトタイル削除，色を黒に
-			let globe = viewer.scene.globe;
-			globe.imageryLayers.removeAll();
-			globe.baseColor = Cesium.Color.fromCssColorString('#000000');
-
-			//baseLayerPickar追加
-			baseLayerPickerAdd();
-
 			//画角を80度に
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
 
@@ -273,6 +265,7 @@
 						tileset.dynamicScreenSpaceErrorFactor = 24;
 					} catch (error) {
 						console.log(`Failed to load tileset: ${error}`);
+						baseLayerPickerAdd();
 					}
 				}
 				geGlobe();
@@ -282,13 +275,19 @@
 		//BaseLayerPicker追加
 
 		function baseLayerPickerAdd() {
-			var layers = viewer.imageryLayers;
+
+			//デフォルトタイル削除，色を黒に
+			let globe = viewer.scene.globe;
+			globe.imageryLayers.removeAll();
+			globe.baseColor = Cesium.Color.fromCssColorString('#000000');
+
+			let layers = viewer.imageryLayers;
 
 			//baseLayer配列を用意
 			var imageryViewModels = [];
 
 			//ArcGIS Maps
-			var satelliteMap = new Cesium.createWorldImagery({
+			var satelliteMap = new Cesium.createWorldImageryAsync({
 				style: Cesium.IonWorldImageryStyle.AERIAL,
 			});
 
@@ -350,21 +349,20 @@
 			}));
 
 			//baseLayerPickerボタンを追加
-			var baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
+			const baseLayerPicker = new Cesium.BaseLayerPicker('baseLayerPickerContainer', {
 				globe: viewer.scene.globe,
 				imageryProviderViewModels: imageryViewModels
 			});
 
 			//被災直後の空中写真
-			var shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
+			const shinsai2011Photo = new Cesium.OpenStreetMapImageryProvider({
 				url: 'https://cyberjapandata.gsi.go.jp/xyz/toho1/',
 				fileExtension: 'jpg',
 				credit: '国土地理院',
 				maximumLevel: 17,
 				brightness: 0.6
 			});
-			var layers = viewer.imageryLayers;
-			var shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
+			const shinsai2011PhotoLayer = new Cesium.ImageryLayer(shinsai2011Photo, {
 				minimumTerrainLevel: 15,
 				maximumTerrainLevel: 17,
 				brightness: 0.6
@@ -417,7 +415,7 @@
 			let pixelOffset = new Cesium.Cartesian2(20.0, 0);
 			let eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
 			let scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
-			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 100000, 0.1);
+			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 300000, 0.1);
 			let verticalOrigin = Cesium.VerticalOrigin.CENTER;
 
 			let jsonNum = 0;
