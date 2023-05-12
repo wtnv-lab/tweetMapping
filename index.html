@@ -91,7 +91,7 @@
 	<script>
 
 		//Google Maps API
-		var script = document.createElement('script');
+		const script = document.createElement('script');
 		script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDmPXZNocuhvv3T6zJe9gQZF0oVrU7TuCA&callback=initMap';
 		script.async = true;
 		window.initMap = function () {
@@ -104,7 +104,7 @@
 		Cesium.GoogleMaps.defaultApiKey = "AIzaSyDmPXZNocuhvv3T6zJe9gQZF0oVrU7TuCA";
 
 		//視点配列
-		var viewPointsArray = [];
+		const viewPointsArray = [];
 
 		function viewPoints(_label, _lat, _lng, _heading, _pitch, _range) {
 			this.label = _label;
@@ -122,7 +122,7 @@
 
 		//画面サイズ判別
 		function getDevice() {
-			var ua = navigator.userAgent;
+			const ua = navigator.userAgent;
 			if (ua.indexOf('iPhone') > 0 || ua.indexOf('iPod') > 0 || ua.indexOf('Android') > 0 && ua.indexOf(
 				'Mobile') > 0) {
 				mobile = 1;
@@ -136,8 +136,8 @@
 
 		//画面サイズ調整
 
-		var screenAdjust = (function () {
-			var mobile = getDevice();
+		let screenAdjust = (function () {
+			const mobile = getDevice();
 			if (mobile != 1) {
 				setTimeout('resizeWindow()', 0);
 			} else {
@@ -157,12 +157,12 @@
 		}
 
 		//各種DIV
-		var cesiumContainerDiv = document.getElementById("cesiumContainer");
-		var blackOutDiv = document.getElementById("blackOut");
-		var loadingDiv = document.getElementById("twCounter");
+		const cesiumContainerDiv = document.getElementById("cesiumContainer");
+		const blackOutDiv = document.getElementById("blackOut");
+		const loadingDiv = document.getElementById("twCounter");
 
 		//ビューア初期化	
-		var viewer;
+		let viewer;
 
 		//Cesiumロード
 		function loadCesium() {
@@ -184,7 +184,7 @@
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
 
 			//スワイプによるスクロール禁止
-			var cesiumDiv = document.getElementById("cesiumContainer");
+			const cesiumDiv = document.getElementById("cesiumContainer");
 
 			function preventScroll(event) {
 				event.preventDefault();
@@ -204,7 +204,7 @@
 			fadeInOut(blackOutDiv, 0);
 			fadeInOut(loadingDiv, 0);
 
-			var sequences = Promise.resolve()
+			const sequences = Promise.resolve()
 				.then(function () {
 					return new Promise((resolve, reject) => {
 						setTimeout(() => {
@@ -232,7 +232,6 @@
 						setTimeout(() => {
 							fadeInOut(blackOutDiv, 1);
 							fadeInOut(loadingDiv, 1);
-							loadPhotogrammetry();
 							resolve();
 						}, 3000);
 					});
@@ -241,6 +240,7 @@
 					return new Promise((resolve, reject) => {
 						setTimeout(() => {
 							loadTweets();
+							loadPhotogrammetry();
 							resolve();
 						}, 1000);
 					});
@@ -260,7 +260,6 @@
 						//LOD
 						tileset.dynamicScreenSpaceError = true;
 						tileset.dynamicScreenSpaceErrorFactor = 24;
-
 					} catch (error) {
 						console.log(`Failed to load tileset: ${error}`);
 					}
@@ -273,14 +272,14 @@
 		function changeViewPoint(num, delay) {
 
 			//カメラパラメータ
-			var newLat = viewPointsArray[num].lat;
-			var newLng = viewPointsArray[num].lng;
-			var newHeading = Cesium.Math.toRadians(viewPointsArray[num].heading);
-			var newPitch = Cesium.Math.toRadians(viewPointsArray[num].pitch);
-			var newRange = viewPointsArray[num].range;
-			var center = Cesium.Cartesian3.fromDegrees(newLng, newLat);
-			var boundingSphere = new Cesium.BoundingSphere(center, newRange);
-			var headingPitchRange = new Cesium.HeadingPitchRange(newHeading, newPitch, newRange);
+			let newLat = viewPointsArray[num].lat;
+			let newLng = viewPointsArray[num].lng;
+			let newHeading = Cesium.Math.toRadians(viewPointsArray[num].heading);
+			let newPitch = Cesium.Math.toRadians(viewPointsArray[num].pitch);
+			let newRange = viewPointsArray[num].range;
+			let center = Cesium.Cartesian3.fromDegrees(newLng, newLat);
+			let boundingSphere = new Cesium.BoundingSphere(center, newRange);
+			let headingPitchRange = new Cesium.HeadingPitchRange(newHeading, newPitch, newRange);
 
 			//Z軸固定
 			viewer.camera.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
@@ -296,58 +295,58 @@
 		/* ここからJsonロード・ビルボード＆ラベル追加 */
 
 		// 検索用配列
-		var jsonArray = [];
+		let jsonArray = [];
 		// translucencyByDistanceのパラメータ（暫定）
-		var translucencyByDistance;
+		let translucencyByDistance;
 		// 一個目のbillboard, label
-		var billboard1st;
-		var label1st;
+		let billboard1st;
+		let label1st;
 
 		function loadTweets() {
 
 			//ビルボード・ラベル用オブジェクト
-			var billboardCollection = new Cesium.BillboardCollection();
-			var labelCollection = new Cesium.LabelCollection();
-			var billboards = viewer.scene.primitives.add(billboardCollection);
-			var labels = viewer.scene.primitives.add(labelCollection);
-			var pixelOffset = new Cesium.Cartesian2(20.0, 0);
-			var eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
-			var scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
+			let billboardCollection = new Cesium.BillboardCollection();
+			let labelCollection = new Cesium.LabelCollection();
+			let billboards = viewer.scene.primitives.add(billboardCollection);
+			let labels = viewer.scene.primitives.add(labelCollection);
+			let pixelOffset = new Cesium.Cartesian2(20.0, 0);
+			let eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
+			let scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
 			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 100000, 0.1);
-			var verticalOrigin = Cesium.VerticalOrigin.CENTER;
+			let verticalOrigin = Cesium.VerticalOrigin.CENTER;
 
-			var jsonNum = 0;
+			let jsonNum = 0;
 
 			//JSON読み込み，ビルボード・ラベル追加
-			var timer = setInterval(function () {
+			let timer = setInterval(function () {
 
 				//スマホとその他でスライス文字数を変える
 				if (getDevice == 1) {
-					var sliceText = 10;
+					let sliceText = 10;
 				} else {
 					sliceText = 20;
 				}
 
-				var jsonFile = "data/czml/tweets.json";
+				let jsonFile = "data/czml/tweets.json";
 				$.getJSON(jsonFile, function (json) {
-					for (var i = 0; i < 50; i++) {
+					for (let i = 0; i < 50; i++) {
 						if (jsonNum >= json.length) {
 							clearInterval(timer);
 							delete jsonFile;
 							finishLoading();
 							break;
 						} else {
-							var id = json[jsonNum].id;
-							var text = json[jsonNum].text;
+							let id = json[jsonNum].id;
+							let text = json[jsonNum].text;
 							if (text.length > sliceText) {
-								var name = text.slice(0, sliceText) + "...";
+								let name = text.slice(0, sliceText) + "...";
 							} else {
 								name = text;
 							}
-							var iconUrl = json[jsonNum].billboard.image;
-							var positions = json[jsonNum].position.cartographicDegrees;
+							let iconUrl = json[jsonNum].billboard.image;
+							let positions = json[jsonNum].position.cartographicDegrees;
 							positions[2] = 200 + 500 * Math.random();
-							var positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(
+							let positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(
 								positions)[0];
 
 							//ビルボード・ラベル追加
@@ -374,8 +373,8 @@
 								});
 							} else {
 								//2個め以降は1個目のオブジェクトのプロパティを流用する
-								billboard1st = viewer.scene.primitives._primitives[1]._billboards[0];
-								label1st = viewer.scene.primitives._primitives[2]._labels[0];
+								billboard1st = viewer.scene.primitives._primitives[0]._billboards[0];
+								label1st = viewer.scene.primitives._primitives[1]._labels[0];
 								billboardsAdd = billboards.add({
 									id: id,
 									position: positionsCartesian3,
@@ -443,33 +442,33 @@
 			viewer.screenSpaceEventHandler.setInputAction(function onLeftClick(movement) {
 
 				// カメラ位置（経度）取得
-				var cameraPosRadians = viewer.camera.positionCartographic;
-				var cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
+				let cameraPosRadians = viewer.camera.positionCartographic;
+				let cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
 
-				var pickedObject = viewer.scene.pick(movement.position);
-				var pikedObjectPos = pickedObject.primitive._position;
+				let pickedObject = viewer.scene.pick(movement.position);
+				let pikedObjectPos = pickedObject.primitive._position;
 
 				if (pikedObjectPos !== undefined) {
 					//　オブジェクト位置（経度）取得
-					var objectPosCartesian = pickedObject.primitive._position;
-					var objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
-					var objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
+					let objectPosCartesian = pickedObject.primitive._position;
+					let objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
+					let objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
 
 					// カメラとオブジェクトの経度差（絶対値）
-					var distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
+					let distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
 
 					// カメラとオブジェクトの経度差が90度以内のときコンテンツバルーンを表示
 					if (distanceLongitude < 90) {
-						var pickedObjectId = pickedObject.id.toString();
+						let pickedObjectId = pickedObject.id.toString();
 						$(tweetMessage).fadeIn(200);
 						adjustDivPosition();
-						var targetObject = jsonArray.find((n) => n.id === pickedObjectId);
+						let targetObject = jsonArray.find((n) => n.id === pickedObjectId);
 						text = targetObject.text;
-						var windowWidth = $(window).width();
+						let windowWidth = $(window).width();
 						$(function () {
 							$(window).click(function (e) {
 								$(window).off("click");
-								var rightMargin = windowWidth - e.pageX;
+								let rightMargin = windowWidth - e.pageX;
 								$(tweetMessage).html(text);
 								if (getDevice() != 1) {
 									if (rightMargin < 320) {
@@ -501,10 +500,10 @@
 		//コンテンツバルーンの位置調整 
 		function adjustDivPosition() {
 			setTimeout(function () {
-				var windowHeight = $(window).height();
+				let windowHeight = $(window).height();
 				var
 					pos = $(tweetMessage).offset().top;
-				var height = $(tweetMessage).height();
+				let height = $(tweetMessage).height();
 				if ((windowHeight - (pos + height)) < 0) {
 					$(tweetMessage).offset({
 						top: windowHeight - height - 12
@@ -517,21 +516,21 @@
 
 		//ジオコード
 		function geocode() {
-			var geocoder = new google.maps.Geocoder();
-			var input = document.getElementById('inputtext').value;
+			let geocoder = new google.maps.Geocoder();
+			let input = document.getElementById('inputtext').value;
 			geocoder.geocode({
 				address: input
 			},
 				function (results, status) {
 					if (status == google.maps.GeocoderStatus.OK) {
-						var viewportObj = results[0].geometry.viewport;
-						var southNorth = viewportObj[Object.keys(viewportObj)[0]];
-						var westEast = viewportObj[Object.keys(viewportObj)[1]];
-						var south = southNorth[Object.keys(southNorth)[0]];
-						var north = southNorth[Object.keys(southNorth)[1]];
-						var west = westEast[Object.keys(westEast)[0]];
-						var east = westEast[Object.keys(westEast)[1]];
-						var rectangle = Cesium.Rectangle.fromDegrees(west, south, east, north);
+						let viewportObj = results[0].geometry.viewport;
+						let southNorth = viewportObj[Object.keys(viewportObj)[0]];
+						let westEast = viewportObj[Object.keys(viewportObj)[1]];
+						let south = southNorth[Object.keys(southNorth)[0]];
+						let north = southNorth[Object.keys(southNorth)[1]];
+						let west = westEast[Object.keys(westEast)[0]];
+						let east = westEast[Object.keys(westEast)[1]];
+						let rectangle = Cesium.Rectangle.fromDegrees(west, south, east, north);
 						viewer.camera.flyTo({
 							destination: rectangle,
 							easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT
@@ -560,14 +559,14 @@
 		//テキスト検索
 		function textSearch() {
 			$(tweetMessage).hide();
-			var searchQuery = String(document.getElementById('searchQuery').value);
-			var targetObject = jsonArray.filter(function (obj) {
+			let searchQuery = String(document.getElementById('searchQuery').value);
+			let targetObject = jsonArray.filter(function (obj) {
 				return obj.text.match(searchQuery);
 			});
-			var billboardsObject = viewer.scene.primitives._primitives[1]._billboards;
-			var labelsObject = viewer.scene.primitives._primitives[2]._labels;
+			let billboardsObject = viewer.scene.primitives._primitives[1]._billboards;
+			let labelsObject = viewer.scene.primitives._primitives[2]._labels;
 
-			for (var i = 0; i < billboardsObject.length; i++) {
+			for (let i = 0; i < billboardsObject.length; i++) {
 				// カラ検索で初期化
 				if (searchQuery == "") {
 					billboardsObject[i].show = true;
