@@ -167,8 +167,6 @@
 		//Cesiumロード
 		function loadCesium() {
 			viewer = new Cesium.Viewer(cesiumContainerDiv, {
-				//デフォルトのglobeを非表示
-				globe: false,
 				navigationHelpButton: false,
 				navigationInstructionsInitiallyVisible: false,
 				geocoder: false,
@@ -182,23 +180,7 @@
 				useBrowserRecommendedResolution: true
 			});
 
-			async function geGlobe() {
-				try {
-					const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-					viewer.scene.primitives.add(tileset);
-					//スタイル設定
-					tileset.style = new Cesium.Cesium3DTileStyle({
-						color: "rgba(140, 140, 140, 1)",
-					});
-
-				} catch (error) {
-					console.log(`Failed to load tileset: ${error}`);
-				}
-			}
-			geGlobe();
-
 			//画角を80度に
-
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
 
 			//スワイプによるスクロール禁止
@@ -250,6 +232,7 @@
 						setTimeout(() => {
 							fadeInOut(blackOutDiv, 1);
 							fadeInOut(loadingDiv, 1);
+							loadPhotogrammetry();
 							resolve();
 						}, 3000);
 					});
@@ -262,6 +245,25 @@
 						}, 1000);
 					});
 				});
+
+			function loadPhotogrammetry() {
+				//デフォルトのglobeを非表示
+				viewer.globe = false;
+				async function geGlobe() {
+					try {
+						const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+						viewer.scene.primitives.add(tileset);
+						//スタイル設定
+						tileset.style = new Cesium.Cesium3DTileStyle({
+							color: "rgba(140, 140, 140, 1)",
+						});
+
+					} catch (error) {
+						console.log(`Failed to load tileset: ${error}`);
+					}
+				}
+				geGlobe();
+			}
 		}
 
 		//視点移動関数
