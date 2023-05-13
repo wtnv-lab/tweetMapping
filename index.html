@@ -248,10 +248,10 @@
 				});
 
 			function loadPhotogrammetry() {
-				//デフォルトのglobeを非表示
-				viewer.globe = false;
-				viewer.baseLayerPicker = false;
-
+				//デフォルトのglobeを黒に
+				const globe = viewer.scene.globe;
+				globe.imageryLayers.removeAll();
+				globe.baseColor = Cesium.Color.fromCssColorString('#000000');
 				//3D Tiles読み込み
 				async function geGlobe() {
 					try {
