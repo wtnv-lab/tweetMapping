@@ -414,9 +414,8 @@
 			let billboards = viewer.scene.primitives.add(billboardCollection);
 			let labels = viewer.scene.primitives.add(labelCollection);
 			let pixelOffset = new Cesium.Cartesian2(20.0, 0);
-			let eyeOffset = new Cesium.Cartesian3(0.0, 0.0, -10000.0);
 			let scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
-			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 300000, 0.1);
+			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
 			let verticalOrigin = Cesium.VerticalOrigin.CENTER;
 
 			let jsonNum = 0;
@@ -461,6 +460,7 @@
 									position: positionsCartesian3,
 									image: "data/icon/flags/" + iconUrl,
 									scale: 0.25,
+									disableDepthTestDistance: Number.POSITIVE_INFINITY,
 									translucencyByDistance: translucencyByDistance,
 								});
 								labelAdd = labels.add({
@@ -473,6 +473,7 @@
 									text: name,
 									scaleByDistance: scaleByDistance,
 									verticalOrigin: verticalOrigin,
+									disableDepthTestDistance: Number.POSITIVE_INFINITY,
 									translucencyByDistance: translucencyByDistance
 								});
 							} else {
@@ -484,6 +485,7 @@
 									position: positionsCartesian3,
 									image: billboard1st.image,
 									scale: billboard1st.scale,
+									disableDepthTestDistance: Number.POSITIVE_INFINITY,
 									translucencyByDistance: billboard1st.translucencyByDistance
 								});
 								labelAdd = labels.add({
@@ -496,6 +498,7 @@
 									text: name,
 									scaleByDistance: label1st.scaleByDistance,
 									verticalOrigin: label1st.verticalOrigin,
+									disableDepthTestDistance: Number.POSITIVE_INFINITY,
 									translucencyByDistance: label1st.translucencyByDistance
 								});
 							}
