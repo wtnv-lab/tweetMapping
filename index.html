@@ -250,7 +250,7 @@
 			function loadPhotogrammetry() {
 				//デフォルトのglobeを黒に
 				const globe = viewer.scene.globe;
-				globe.imageryLayers.removeAll();
+				// globe.imageryLayers.removeAll();
 				globe.baseColor = Cesium.Color.fromCssColorString('#000000');
 				//3D Tiles読み込み
 				async function geGlobe() {
@@ -266,7 +266,7 @@
 						tileset.dynamicScreenSpaceErrorFactor = 24;
 					} catch (error) {
 						console.log(`Failed to load tileset: ${error}`);
-						baseLayerPickerAdd();
+						// baseLayerPickerAdd();
 					}
 				}
 				geGlobe();
