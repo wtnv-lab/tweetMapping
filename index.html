@@ -247,36 +247,47 @@
 							resolve();
 						}, 1000);
 					});
+				})
+				.then(function () {
+					return new Promise((resolve, reject) => {
+						setTimeout(() => {
+							console.log(tileset);
+							if (tileset !== undefined) {
+								viewer.scene.globe.show = false;
+							}
+							resolve();
+						}, 500);
+					});
 				});
+		}
 
-			function loadPhotogrammetry() {
-				//デフォルトのglobeを黒に
-				const globe = viewer.scene.globe;
-				// globe.imageryLayers.removeAll();
-				globe.baseColor = Cesium.Color.fromCssColorString('#000000');
-				//3D Tiles読み込み
-				async function geGlobe() {
-					try {
-						const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-						viewer.scene.primitives.add(tileset);
-						//スタイル設定
-						tileset.style = new Cesium.Cesium3DTileStyle({
-							color: "rgba(140, 140, 140, 1)",
-						});
-						//LOD
-						tileset.dynamicScreenSpaceError = true;
-						tileset.dynamicScreenSpaceErrorFactor = 24;
-						if (tileset !== undefined) {
-							viewer.scene.globe.show = false;
-						}
-					} catch (error) {
-						console.log(`Failed to load tileset: ${error}`);
-						viewer.scene.globe.show = true;
-						baseLayerPickerAdd();
-					}
+		//3D Tiles
+		let tileset;
+
+		function loadPhotogrammetry() {
+			//デフォルトのglobeを黒に
+			const globe = viewer.scene.globe;
+			// globe.imageryLayers.removeAll();
+			globe.baseColor = Cesium.Color.fromCssColorString('#000000');
+			//3D Tiles読み込み
+			async function geGlobe() {
+				try {
+					tileset = await Cesium.createGooglePhotorealistic3DTileset();
+					viewer.scene.primitives.add(tileset);
+					//スタイル設定
+					tileset.style = new Cesium.Cesium3DTileStyle({
+						color: "rgba(140, 140, 140, 1)",
+					});
+					//LOD
+					tileset.dynamicScreenSpaceError = true;
+					tileset.dynamicScreenSpaceErrorFactor = 24;
+				} catch (error) {
+					console.log(`Failed to load tileset: ${error}`);
+					viewer.scene.globe.show = true;
+					baseLayerPickerAdd();
 				}
-				geGlobe();
 			}
+			geGlobe();
 		}
 
 		//BaseLayerPicker追加
