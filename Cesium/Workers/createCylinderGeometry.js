@@ -1,1 +1,26 @@
-define(["./CylinderGeometry-25b4eb3a","./defaultValue-f6d5e6da","./Transforms-f17097e5","./Matrix3-b2351961","./Math-355606c6","./Matrix2-7a8e9daf","./RuntimeError-9b4ce3fb","./combine-0c102d93","./ComponentDatatype-ab629b88","./WebGLConstants-7f557f93","./CylinderGeometryLibrary-4d7f606d","./GeometryAttribute-9c1a6bab","./GeometryAttributes-1e4ddcd2","./GeometryOffsetAttribute-2579b8d2","./IndexDatatype-a9b1bc18","./VertexFormat-fbdec922"],(function(e,t,r,n,i,o,a,y,m,u,G,d,f,s,b,c){"use strict";return function(r,n){return t.defined(n)&&(r=e.CylinderGeometry.unpack(r,n)),e.CylinderGeometry.createGeometry(r)}}));
+/**
+ * @license
+ * Cesium - https://github.com/CesiumGS/cesium
+ * Version 1.112
+ *
+ * Copyright 2011-2022 Cesium Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Columbus View (Pat. Pend.)
+ *
+ * Portions licensed separately.
+ * See https://github.com/CesiumGS/cesium/blob/main/LICENSE.md for full licensing details.
+ */
+
+import{a as r}from"./chunk-5RO6R4IX.js";import"./chunk-2F7QWDFC.js";import"./chunk-2DNLGXTL.js";import"./chunk-ZLPZ2L4F.js";import"./chunk-EQ7PMEBC.js";import"./chunk-FDDSRMXI.js";import"./chunk-YYYI3I6L.js";import"./chunk-YIFABOF6.js";import"./chunk-PQVQONHO.js";import"./chunk-KDW4RGIR.js";import"./chunk-VNDUYYBJ.js";import"./chunk-V624RX7A.js";import"./chunk-VZ2RFJ3P.js";import"./chunk-RN5GA5QZ.js";import"./chunk-TWC6ISJU.js";import"./chunk-RKPKWH3Z.js";import"./chunk-BIYNNQRQ.js";import{e as o}from"./chunk-ZLUSVROX.js";function i(e,t){return o(t)&&(e=r.unpack(e,t)),r.createGeometry(e)}var a=i;export{a as default};
