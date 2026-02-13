@@ -25,13 +25,13 @@
 		content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
 	<title>東日本大震災ツイートマッピング</title>
 	<link rel="SHORTCUT ICON" href="https://shinsai.mapping.jp/favicon.ico">
-	<style>
-		@import url(Cesium/Widgets/widgets.css);
-	</style>
+		<style>
+			@import url(https://cdn.jsdelivr.net/npm/cesium@latest/Build/Cesium/Widgets/widgets.css);
+		</style>
 	<link rel="stylesheet" type="text/css" media="all" href="./css/style.css" />
 	<link rel="stylesheet" type="text/css" media="all" href="./css/menubutton.css" />
 	<script src="js/jquery-2.1.3.min.js"></script>
-	<script src="Cesium/Cesium.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/cesium@latest/Build/Cesium/Cesium.js"></script>
 	<script src="https://www.google.com/jsapi"></script>
 
 	<!-- 新規設置の際はGoogle Analytics IDの変更が必要 -->
@@ -122,11 +122,12 @@
 		viewPointsArray[2] = new viewPoints("皇居", 35.6835836, 139.7508397, 0, -55, 2000);
 
 		//画面サイズ判別
-		function getDevice() {
-			const ua = navigator.userAgent;
-			if (ua.indexOf('iPhone') > 0 || ua.indexOf('iPod') > 0 || ua.indexOf('Android') > 0 && ua.indexOf(
-				'Mobile') > 0) {
-				mobile = 1;
+			function getDevice() {
+				const ua = navigator.userAgent;
+				let mobile = 0;
+				if (ua.indexOf('iPhone') > 0 || ua.indexOf('iPod') > 0 || ua.indexOf('Android') > 0 && ua.indexOf(
+					'Mobile') > 0) {
+					mobile = 1;
 			} else if (ua.indexOf('iPad') > 0 || ua.indexOf('Android') > 0) {
 				mobile = 2;
 			} else {
@@ -137,25 +138,25 @@
 
 		//画面サイズ調整
 
-		let screenAdjust = (function () {
-			const mobile = getDevice();
-			if (mobile != 1) {
-				setTimeout('resizeWindow()', 0);
-			} else {
-				$('.titleImage').css('width', '100%');
-				setTimeout('resizeWindow()', 1000);
-			}
-		})();
+			let screenAdjust = (function () {
+				const mobile = getDevice();
+				if (mobile != 1) {
+					setTimeout(resizeWindow, 0);
+				} else {
+					$('.titleImage').css('width', '100%');
+					setTimeout(resizeWindow, 1000);
+				}
+			})();
 
-		function resizeWindow() {
-			$(function () {
-				$(cesiumContainerDiv).css('height', '100%');
-				$(cesiumContainerDiv).css('width', '100%');
-				$(blackOutDiv).css('height', '100%');
-				$(blackOutDiv).css('height', '100%');
-			});
-			setTimeout('loadCesium()', 100);
-		}
+			function resizeWindow() {
+				$(function () {
+					$(cesiumContainerDiv).css('height', '100%');
+					$(cesiumContainerDiv).css('width', '100%');
+					$(blackOutDiv).css('height', '100%');
+					$(blackOutDiv).css('width', '100%');
+				});
+				setTimeout(loadCesium, 100);
+			}
 
 		//各種DIV
 		const cesiumContainerDiv = document.getElementById("cesiumContainer");
@@ -179,9 +180,12 @@
 				requestRenderMode: true,
 				maximumRenderTimeChange: Infinity,
 				useBrowserRecommendedResolution: true
-			});
+				});
 
-			viewer.imageryLayers._layers[0].brightness = 0.5;
+				const baseLayer = viewer.imageryLayers.get(0);
+				if (baseLayer) {
+					baseLayer.brightness = 0.5;
+				}
 
 			//画角を80度に
 			viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
@@ -408,108 +412,69 @@
 
 		// 検索用配列
 		let jsonArray = [];
-		// translucencyByDistanceのパラメータ（暫定）
-		let translucencyByDistance;
-		// 一個目のbillboard, label
-		let billboard1st;
-		let label1st;
+			// translucencyByDistanceのパラメータ（暫定）
+			let translucencyByDistance;
+			let tweetBillboards;
+			let tweetLabels;
+			let loadTimer;
 
-		function loadTweets() {
+			function loadTweets() {
 
-			//ビルボード・ラベル用オブジェクト
-			let billboardCollection = new Cesium.BillboardCollection();
-			let labelCollection = new Cesium.LabelCollection();
-			let billboards = viewer.scene.primitives.add(billboardCollection);
-			let labels = viewer.scene.primitives.add(labelCollection);
-			let pixelOffset = new Cesium.Cartesian2(20.0, 0);
-			let scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
-			translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
-			let verticalOrigin = Cesium.VerticalOrigin.CENTER;
+				//ビルボード・ラベル用オブジェクト
+				const billboardCollection = new Cesium.BillboardCollection();
+				const labelCollection = new Cesium.LabelCollection();
+				tweetBillboards = viewer.scene.primitives.add(billboardCollection);
+				tweetLabels = viewer.scene.primitives.add(labelCollection);
+				const pixelOffset = new Cesium.Cartesian2(20.0, 0);
+				const scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
+				translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
+				const verticalOrigin = Cesium.VerticalOrigin.CENTER;
+				const sliceText = getDevice() === 1 ? 10 : 20;
 
-			let jsonNum = 0;
+				let jsonNum = 0;
+				const jsonFile = "data/czml/tweets.json";
 
-			//JSON読み込み，ビルボード・ラベル追加
-			let timer = setInterval(function () {
-
-				//スマホとその他でスライス文字数を変える
-				if (getDevice == 1) {
-					let sliceText = 10;
-				} else {
-					sliceText = 20;
-				}
-
-				let jsonFile = "data/czml/tweets.json";
 				$.getJSON(jsonFile, function (json) {
-					for (let i = 0; i < 50; i++) {
-						if (jsonNum >= json.length) {
-							clearInterval(timer);
-							delete jsonFile;
-							finishLoading();
-							break;
-						} else {
-							let id = json[jsonNum].id;
-							let text = json[jsonNum].text;
-							if (text.length > sliceText) {
-								let name = text.slice(0, sliceText) + "...";
-							} else {
-								name = text;
+					// JSONは一度だけ取得し，描画のみを分割実行する
+					loadTimer = setInterval(function () {
+						for (let i = 0; i < 50; i++) {
+							if (jsonNum >= json.length) {
+								clearInterval(loadTimer);
+								loadTimer = undefined;
+								finishLoading();
+								break;
 							}
-							let iconUrl = json[jsonNum].billboard.image;
-							let positions = json[jsonNum].position.cartographicDegrees;
+
+							const id = json[jsonNum].id;
+							const text = json[jsonNum].text;
+							const name = text.length > sliceText ? text.slice(0, sliceText) + "..." : text;
+							const iconUrl = json[jsonNum].billboard.image;
+							const positions = json[jsonNum].position.cartographicDegrees;
 							positions[2] = 200 + 500 * Math.random();
-							let positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(
-								positions)[0];
+							const positionsCartesian3 = Cesium.Cartesian3.fromDegreesArrayHeights(positions)[0];
 
-							//ビルボード・ラベル追加
+							tweetBillboards.add({
+								id: id,
+								position: positionsCartesian3,
+								image: "data/icon/flags/" + iconUrl,
+								scale: 0.25,
+								disableDepthTestDistance: Number.POSITIVE_INFINITY,
+								translucencyByDistance: translucencyByDistance
+							});
 
-							if (i == 0) {
-								billboardsAdd = billboards.add({
-									id: id,
-									position: positionsCartesian3,
-									image: "data/icon/flags/" + iconUrl,
-									scale: 0.25,
-									disableDepthTestDistance: Number.POSITIVE_INFINITY,
-									translucencyByDistance: translucencyByDistance,
-								});
-								labelAdd = labels.add({
-									id: id,
-									position: positionsCartesian3,
-									font: "11pt Sans-Serif",
-									style: Cesium.LabelStyle.FILL,
-									fillColor: Cesium.Color.WHITE,
-									pixelOffset: pixelOffset,
-									text: name,
-									scaleByDistance: scaleByDistance,
-									verticalOrigin: verticalOrigin,
-									disableDepthTestDistance: Number.POSITIVE_INFINITY,
-									translucencyByDistance: translucencyByDistance
-								});
-							} else {
-								//2個め以降は1個目のオブジェクトのプロパティを流用する
-								billboard1st = viewer.scene.primitives._primitives[0]._billboards[0];
-								label1st = viewer.scene.primitives._primitives[1]._labels[0];
-								billboardsAdd = billboards.add({
-									id: id,
-									position: positionsCartesian3,
-									image: billboard1st.image,
-									scale: billboard1st.scale,
-									disableDepthTestDistance: Number.POSITIVE_INFINITY,
-									translucencyByDistance: billboard1st.translucencyByDistance
-								});
-								labelAdd = labels.add({
-									id: id,
-									position: positionsCartesian3,
-									font: label1st.font,
-									style: label1st.style,
-									fillColor: label1st.fillColor,
-									pixelOffset: label1st.pixelOffset,
-									text: name,
-									scaleByDistance: label1st.scaleByDistance,
-									verticalOrigin: label1st.verticalOrigin,
-									disableDepthTestDistance: Number.POSITIVE_INFINITY,
-									translucencyByDistance: label1st.translucencyByDistance
-								});
-							}
+							tweetLabels.add({
+								id: id,
+								position: positionsCartesian3,
+								font: "11pt Sans-Serif",
+								style: Cesium.LabelStyle.FILL,
+								fillColor: Cesium.Color.WHITE,
+								pixelOffset: pixelOffset,
+								text: name,
+								scaleByDistance: scaleByDistance,
+								verticalOrigin: verticalOrigin,
+								disableDepthTestDistance: Number.POSITIVE_INFINITY,
+								translucencyByDistance: translucencyByDistance
+							});
 
 							//検索用配列に追加
 							jsonArray.push({
@@ -521,11 +486,10 @@
 							jsonNum++;
 							loadingDiv.innerHTML = "<p>" + jsonNum + "/" + json.length + "</p>";
 						}
-					}
+						viewer.scene.requestRender();
+					}, 10);
 				});
-				viewer.scene.requestRender();
-			}, 10);
-		}
+			}
 
 		//ロード完了
 		function finishLoading() {
@@ -534,19 +498,20 @@
 				fadeInOut(loadingDiv, 0);
 				changeViewPoint(2, 3);
 			}, 1000);
-			delete timer;
-			descriptionBalloon();
-			loadingDiv.innerHTML = "<p class='twCounter'>Completed.</p>";
-		}
+				if (loadTimer) {
+					clearInterval(loadTimer);
+					loadTimer = undefined;
+				}
+				descriptionBalloon();
+				loadingDiv.innerHTML = "<p class='twCounter'>Completed.</p>";
+			}
 
 		//コンテンツバルーン表示
 		function descriptionBalloon() {
 
-			window.removeEventListener;
-
-			//入力フォーム，ボタンクリック時にバルーンを隠す
-			$('.functions,.general-button').click(function () {
-				$(tweetMessage).hide();
+				//入力フォーム，ボタンクリック時にバルーンを隠す
+				$('.functions,.general-button').click(function () {
+					$(tweetMessage).hide();
 			});
 
 			//カメラ移動時にバルーンを隠す
@@ -561,15 +526,15 @@
 				let cameraPosLongitude = Cesium.Math.toDegrees(cameraPosRadians.longitude);
 
 				let pickedObject = viewer.scene.pick(movement.position);
-				if (pickedObject === undefined) {
-					$(tweetMessage).hide();
-				} else {
-					let pikedObjectPos = pickedObject.primitive._position;
-					if (pikedObjectPos !== undefined) {
-						//　オブジェクト位置（経度）取得
-						let objectPosCartesian = pickedObject.primitive._position;
-						let objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
-						let objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
+					if (pickedObject === undefined) {
+						$(tweetMessage).hide();
+					} else {
+						let pikedObjectPos = pickedObject.primitive && pickedObject.primitive.position;
+						if (pikedObjectPos !== undefined) {
+							//　オブジェクト位置（経度）取得
+							let objectPosCartesian = pickedObject.primitive.position;
+							let objectPosCartographic = Cesium.Cartographic.fromCartesian(objectPosCartesian);
+							let objectPosLongitude = Cesium.Math.toDegrees(objectPosCartographic.longitude);
 
 						// カメラとオブジェクトの経度差（絶対値）
 						let distanceLongitude = Math.abs(cameraPosLongitude - objectPosLongitude);
@@ -675,35 +640,38 @@
 
 
 		//テキスト検索
-		function textSearch() {
-			$(tweetMessage).hide();
-			let searchQuery = String(document.getElementById('searchQuery').value);
-			let targetObject = jsonArray.filter(function (obj) {
-				return obj.text.match(searchQuery);
-			});
-			let billboardsObject = viewer.scene.primitives._primitives[0]._billboards;
-			let labelsObject = viewer.scene.primitives._primitives[1]._labels;
+			function textSearch() {
+				$(tweetMessage).hide();
+				let searchQuery = String(document.getElementById('searchQuery').value);
+				let targetObject = jsonArray.filter(function (obj) {
+					return obj.text.includes(searchQuery);
+				});
+				if (!tweetBillboards || !tweetLabels) {
+					return;
+				}
 
-			for (let i = 0; i < billboardsObject.length; i++) {
-				// カラ検索で初期化
-				if (searchQuery == "") {
-					billboardsObject[i].show = true;
-					labelsObject[i].show = true;
-					billboardsObject[i].translucencyByDistance = translucencyByDistance;
-					labelsObject[i].translucencyByDistance = translucencyByDistance;
-				} else {
-					// 文字列が含まれるビルボードのみアクティブにする
-					if (targetObject.find((v) => v.id === billboardsObject[i]._id)) {
-						billboardsObject[i].show = true;
-						labelsObject[i].show = true;
-						billboardsObject[i].translucencyByDistance = undefined;
-						labelsObject[i].translucencyByDistance = undefined;
+				for (let i = 0; i < tweetBillboards.length; i++) {
+					const billboard = tweetBillboards.get(i);
+					const label = tweetLabels.get(i);
+					// カラ検索で初期化
+					if (searchQuery == "") {
+						billboard.show = true;
+						label.show = true;
+						billboard.translucencyByDistance = translucencyByDistance;
+						label.translucencyByDistance = translucencyByDistance;
 					} else {
-						billboardsObject[i].show = false;
-						labelsObject[i].show = false;
+						// 文字列が含まれるビルボードのみアクティブにする
+						if (targetObject.find((v) => v.id === billboard.id)) {
+							billboard.show = true;
+							label.show = true;
+							billboard.translucencyByDistance = undefined;
+							label.translucencyByDistance = undefined;
+						} else {
+							billboard.show = false;
+							label.show = false;
+						}
 					}
 				}
-			}
 			viewer.scene.requestRender();
 		}
 
