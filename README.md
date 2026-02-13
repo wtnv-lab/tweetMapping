@@ -7,3 +7,16 @@
 - [東京大学大学院 渡邉英徳研究室](https://labo.wtnv.jp/)が作成・運営しています。
 - ソースコードはコメントを参考に改修の上，自由にお使いください。
 - お問い合わせは hwtnv(at)iii.u-tokyo.ac.jp まで
+
+## データ最適化
+
+`data/czml/tweets.json` から、表示用の地理タイル（`data/czml/tweet-tiles/`）を生成できます。
+
+```bash
+node tools/build-tweet-tiles.js
+```
+
+生成物:
+- `data/czml/tweet-tiles/index.json`: タイル一覧と件数
+- `data/czml/tweet-tiles/search.json`: 検索用インデックス（id/text）
+- `data/czml/tweet-tiles/tiles/*.json`: 地理タイルごとのツイート本体

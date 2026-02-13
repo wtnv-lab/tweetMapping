@@ -31,18 +31,35 @@
   const tweetMessageDiv = document.getElementById("tweetMessage");
 
   let viewer;
+  let photogrammetryTilesetPromise = null;
 
-  // 検索用配列
-  const jsonArray = [];
+  const tweetTileIndexUrl = "data/czml/tweet-tiles/index.json";
+  const tweetSearchIndexUrl = "data/czml/tweet-tiles/search.json";
+  const legacyTweetJsonUrl = "data/czml/tweets.json";
+
+  const tweetTextById = new Map();
+  const renderedTweetById = new Map();
+  const loadedTileKeys = new Set();
+  const loadingTileKeys = new Set();
+  const tileTweetIds = new Map();
+
+  let tweetTileIndex = null;
+  let isInitialTilesLoaded = false;
   let translucencyByDistance;
+  let labelPixelOffset;
+  let labelScaleByDistance;
+  let labelVerticalOrigin;
+  let labelSliceText;
   let tweetBillboards;
   let tweetLabels;
-  let loadTimer;
 
   let visibleFilterIds = null;
   let cullingEnabled = false;
   let cullTimer = null;
+  let tileLoadTimer = null;
   const cullMarginPx = 32;
+  const tileLoadDebounceMs = 120;
+  const tilePrefetchMargin = 1;
   const scratchToObject = new Cesium.Cartesian3();
   const scratchWindow = new Cesium.Cartesian2();
   const projectToWindowCoordinates =
@@ -110,6 +127,8 @@
     cesiumDiv.addEventListener("gesturechange", preventScroll, false);
     cesiumDiv.addEventListener("gestureend", preventScroll, false);
 
+    // Start photogrammetry loading as early as possible to reduce zoom-in lag.
+    loadPhotogrammetry();
     openingSequence();
   }
 
@@ -151,7 +170,6 @@
         return new Promise(function (resolve) {
           setTimeout(function () {
             loadTweets();
-            loadPhotogrammetry();
             resolve();
           }, 1000);
         });
@@ -167,21 +185,40 @@
   }
 
   function loadPhotogrammetry() {
+    if (photogrammetryTilesetPromise) {
+      return photogrammetryTilesetPromise;
+    }
+
     const globe = viewer.scene.globe;
     globe.baseColor = Cesium.Color.fromCssColorString("#000000");
 
-    (async function () {
+    photogrammetryTilesetPromise = (async function () {
       try {
-        const tileset = viewer.scene.primitives.add(await Cesium.Cesium3DTileset.fromIonAssetId(tilesetIonAssetId));
+        const tileset = viewer.scene.primitives.add(
+          await Cesium.Cesium3DTileset.fromIonAssetId(tilesetIonAssetId, {
+            // Keep early fetch, but reduce coarse LOD artifacts near ground.
+            maximumScreenSpaceError: 24,
+            skipLevelOfDetail: false,
+            immediatelyLoadDesiredLevelOfDetail: true,
+            preloadWhenHidden: true,
+            cullWithChildrenBounds: true,
+          })
+        );
         tileset.style = new Cesium.Cesium3DTileStyle({
           color: "rgba(110, 110, 110, 1)",
         });
         tileset.dynamicScreenSpaceError = true;
-        tileset.dynamicScreenSpaceErrorFactor = 12;
+        tileset.dynamicScreenSpaceErrorFactor = 1.5;
+        tileset.dynamicScreenSpaceErrorDensity = 0.0012;
+        viewer.scene.requestRender();
+        return tileset;
       } catch (error) {
         console.log(error);
+        return null;
       }
     })();
+
+    return photogrammetryTilesetPromise;
   }
 
   function changeViewPoint(num, delay) {
@@ -261,75 +298,268 @@
     scheduleVisibilityUpdate();
   }
 
-  function loadTweets() {
-    const billboardCollection = new Cesium.BillboardCollection();
-    const labelCollection = new Cesium.LabelCollection();
-    tweetBillboards = viewer.scene.primitives.add(billboardCollection);
-    tweetLabels = viewer.scene.primitives.add(labelCollection);
+  function lonLatToTileXY(lon, lat, z) {
+    const latClamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+    const n = Math.pow(2, z);
+    const x = Math.floor(((lon + 180.0) / 360.0) * n);
+    const latRad = Cesium.Math.toRadians(latClamped);
+    const y = Math.floor(((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0) * n);
+    return {
+      x: Math.max(0, Math.min(n - 1, x)),
+      y: Math.max(0, Math.min(n - 1, y)),
+    };
+  }
 
-    const pixelOffset = new Cesium.Cartesian2(20.0, 0);
-    const scaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
-    translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
-    const verticalOrigin = Cesium.VerticalOrigin.CENTER;
-    const sliceText = getDevice() === 1 ? 10 : 20;
-    let lastCounterUpdate = 0;
+  function buildVisibleTileKeySet() {
+    const tileKeys = new Set();
+    if (!tweetTileIndex) {
+      return tileKeys;
+    }
 
-    let jsonNum = 0;
+    const rectangle = viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid);
+    if (!rectangle) {
+      return tileKeys;
+    }
 
-    $.getJSON("data/czml/tweets.json", function (json) {
-      loadTimer = setInterval(function () {
-        for (let i = 0; i < 50; i++) {
-          if (jsonNum >= json.length) {
-            clearInterval(loadTimer);
-            loadTimer = undefined;
-            finishLoading();
-            break;
+    const zoom = tweetTileIndex.zoom;
+    const westDeg = Cesium.Math.toDegrees(rectangle.west);
+    const eastDeg = Cesium.Math.toDegrees(rectangle.east);
+    const southDeg = Cesium.Math.toDegrees(rectangle.south);
+    const northDeg = Cesium.Math.toDegrees(rectangle.north);
+    const lonSegments = westDeg <= eastDeg ? [[westDeg, eastDeg]] : [[westDeg, 180.0], [-180.0, eastDeg]];
+
+    for (let i = 0; i < lonSegments.length; i++) {
+      const segment = lonSegments[i];
+      const min = lonLatToTileXY(segment[0], northDeg, zoom);
+      const max = lonLatToTileXY(segment[1], southDeg, zoom);
+      const minX = Math.min(min.x, max.x) - tilePrefetchMargin;
+      const maxX = Math.max(min.x, max.x) + tilePrefetchMargin;
+      const minY = Math.min(min.y, max.y) - tilePrefetchMargin;
+      const maxY = Math.max(min.y, max.y) + tilePrefetchMargin;
+      const tileCount = Math.pow(2, zoom);
+
+      for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+          if (x < 0 || y < 0 || y >= tileCount || x >= tileCount) {
+            continue;
           }
-
-          const tweet = json[jsonNum];
-          const name = tweet.text.length > sliceText ? tweet.text.slice(0, sliceText) + "..." : tweet.text;
-          const positions = tweet.position.cartographicDegrees;
-          positions[2] = 200 + 500 * Math.random();
-          const position = Cesium.Cartesian3.fromDegreesArrayHeights(positions)[0];
-
-          tweetBillboards.add({
-            id: tweet.id,
-            position: position,
-            image: "data/icon/flags/" + tweet.billboard.image,
-            scale: 0.25,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            translucencyByDistance: translucencyByDistance,
-          });
-
-          tweetLabels.add({
-            id: tweet.id,
-            position: position,
-            font: "11pt Sans-Serif",
-            style: Cesium.LabelStyle.FILL,
-            fillColor: Cesium.Color.WHITE,
-            pixelOffset: pixelOffset,
-            text: name,
-            scaleByDistance: scaleByDistance,
-            verticalOrigin: verticalOrigin,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            translucencyByDistance: translucencyByDistance,
-          });
-
-          jsonArray.push({
-            id: tweet.id,
-            text: tweet.text,
-          });
-
-          jsonNum++;
-          const now = Date.now();
-          if (now - lastCounterUpdate >= 100 || jsonNum === json.length) {
-            lastCounterUpdate = now;
-            loadingDiv.innerHTML = "<p>" + jsonNum + "/" + json.length + "</p>";
+          const tileKey = zoom + "/" + x + "/" + y;
+          if (tweetTileIndex.tiles[tileKey]) {
+            tileKeys.add(tileKey);
           }
         }
-        viewer.scene.requestRender();
-      }, 10);
+      }
+    }
+
+    return tileKeys;
+  }
+
+  function addTweetToScene(tweet, tileKey) {
+    if (!tweet || renderedTweetById.has(tweet.id)) {
+      return;
+    }
+
+    const name = tweet.text.length > labelSliceText ? tweet.text.slice(0, labelSliceText) + "..." : tweet.text;
+    const height = 200 + 500 * Math.random();
+    const position = Cesium.Cartesian3.fromDegrees(tweet.lon, tweet.lat, height);
+
+    const billboard = tweetBillboards.add({
+      id: tweet.id,
+      position: position,
+      image: "data/icon/flags/" + tweet.img,
+      scale: 0.25,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      translucencyByDistance: translucencyByDistance,
     });
+
+    const label = tweetLabels.add({
+      id: tweet.id,
+      position: position,
+      font: "11pt Sans-Serif",
+      style: Cesium.LabelStyle.FILL,
+      fillColor: Cesium.Color.WHITE,
+      pixelOffset: labelPixelOffset,
+      text: name,
+      scaleByDistance: labelScaleByDistance,
+      verticalOrigin: labelVerticalOrigin,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      translucencyByDistance: translucencyByDistance,
+    });
+
+    renderedTweetById.set(tweet.id, {
+      billboard: billboard,
+      label: label,
+    });
+  }
+
+  function removeTileFromScene(tileKey) {
+    const tweetIds = tileTweetIds.get(tileKey);
+    if (!tweetIds) {
+      return;
+    }
+
+    for (let i = 0; i < tweetIds.length; i++) {
+      const tweetId = tweetIds[i];
+      const rendered = renderedTweetById.get(tweetId);
+      if (!rendered) {
+        continue;
+      }
+      tweetBillboards.remove(rendered.billboard);
+      tweetLabels.remove(rendered.label);
+      renderedTweetById.delete(tweetId);
+    }
+
+    tileTweetIds.delete(tileKey);
+    loadedTileKeys.delete(tileKey);
+  }
+
+  function loadTileByKey(tileKey) {
+    if (!tweetTileIndex || loadedTileKeys.has(tileKey) || loadingTileKeys.has(tileKey)) {
+      return Promise.resolve();
+    }
+
+    const tileMeta = tweetTileIndex.tiles[tileKey];
+    if (!tileMeta) {
+      return Promise.resolve();
+    }
+
+    loadingTileKeys.add(tileKey);
+    return $.getJSON("data/czml/tweet-tiles/" + tileMeta.path)
+      .then(function (tileData) {
+        const tileTweets = (tileData && tileData.tweets) || [];
+        const ids = [];
+        for (let i = 0; i < tileTweets.length; i++) {
+          const tweet = tileTweets[i];
+          addTweetToScene(tweet, tileKey);
+          ids.push(tweet.id);
+          if (!tweetTextById.has(tweet.id)) {
+            tweetTextById.set(tweet.id, tweet.text);
+          }
+        }
+        tileTweetIds.set(tileKey, ids);
+        loadedTileKeys.add(tileKey);
+        loadingDiv.innerHTML =
+          "<p>" +
+          renderedTweetById.size +
+          "/" +
+          (tweetTileIndex.totalTweets || renderedTweetById.size) +
+          " (visible tiles)</p>";
+      })
+      .always(function () {
+        loadingTileKeys.delete(tileKey);
+      });
+  }
+
+  function scheduleTileLoadByView() {
+    if (tileLoadTimer !== null) {
+      return;
+    }
+    tileLoadTimer = setTimeout(function () {
+      tileLoadTimer = null;
+      loadTilesByView();
+    }, tileLoadDebounceMs);
+  }
+
+  function loadTilesByView() {
+    if (!tweetTileIndex) {
+      return;
+    }
+
+    const targetTileKeys = buildVisibleTileKeySet();
+    const loadPromises = [];
+
+    loadedTileKeys.forEach(function (loadedTileKey) {
+      if (!targetTileKeys.has(loadedTileKey)) {
+        removeTileFromScene(loadedTileKey);
+      }
+    });
+
+    targetTileKeys.forEach(function (tileKey) {
+      loadPromises.push(loadTileByKey(tileKey));
+    });
+
+    Promise.all(loadPromises).then(function () {
+      if (!isInitialTilesLoaded) {
+        isInitialTilesLoaded = true;
+        finishLoading();
+      }
+      updateVisibleTweets();
+      viewer.scene.requestRender();
+    });
+  }
+
+  function loadSearchIndex() {
+    return $.getJSON(tweetSearchIndexUrl).then(function (searchData) {
+      const tweets = (searchData && searchData.tweets) || [];
+      for (let i = 0; i < tweets.length; i++) {
+        const item = tweets[i];
+        tweetTextById.set(item.id, item.text);
+      }
+    });
+  }
+
+  function convertLegacyTweetsToTileIndex(legacyTweets) {
+    const pseudoIndex = {
+      zoom: 9,
+      totalTweets: legacyTweets.length,
+      tiles: {
+        "9/0/0": { path: "__legacy__", count: legacyTweets.length },
+      },
+    };
+
+    tweetTileIndex = pseudoIndex;
+    const ids = [];
+    for (let i = 0; i < legacyTweets.length; i++) {
+      const src = legacyTweets[i];
+      const coords = src.position && src.position.cartographicDegrees;
+      if (!coords || coords.length < 2) {
+        continue;
+      }
+      const tweet = {
+        id: String(src.id),
+        text: String(src.text || ""),
+        lon: Number(coords[0]),
+        lat: Number(coords[1]),
+        img: src.billboard && src.billboard.image ? String(src.billboard.image) : "twitter.png",
+      };
+      if (!Number.isFinite(tweet.lon) || !Number.isFinite(tweet.lat)) {
+        continue;
+      }
+      addTweetToScene(tweet, "9/0/0");
+      tweetTextById.set(tweet.id, tweet.text);
+      ids.push(tweet.id);
+    }
+    tileTweetIds.set("9/0/0", ids);
+    loadedTileKeys.add("9/0/0");
+    isInitialTilesLoaded = true;
+    finishLoading();
+    updateVisibleTweets();
+    viewer.scene.requestRender();
+  }
+
+  function loadTweets() {
+    const newBillboardCollection = new Cesium.BillboardCollection();
+    const newLabelCollection = new Cesium.LabelCollection();
+    tweetBillboards = viewer.scene.primitives.add(newBillboardCollection);
+    tweetLabels = viewer.scene.primitives.add(newLabelCollection);
+    translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
+    labelPixelOffset = new Cesium.Cartesian2(20.0, 0);
+    labelScaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
+    labelVerticalOrigin = Cesium.VerticalOrigin.CENTER;
+    labelSliceText = getDevice() === 1 ? 10 : 20;
+
+    $.getJSON(tweetTileIndexUrl)
+      .done(function (indexData) {
+        tweetTileIndex = indexData;
+        loadSearchIndex().always(function () {
+          scheduleTileLoadByView();
+          viewer.camera.changed.addEventListener(scheduleTileLoadByView);
+          window.addEventListener("resize", scheduleTileLoadByView);
+        });
+      })
+      .fail(function () {
+        $.getJSON(legacyTweetJsonUrl).done(convertLegacyTweetsToTileIndex);
+      });
   }
 
   function finishLoading() {
@@ -338,11 +568,6 @@
       fadeInOut(loadingDiv, 0);
       changeViewPoint(2, 3);
     }, 1000);
-
-    if (loadTimer) {
-      clearInterval(loadTimer);
-      loadTimer = undefined;
-    }
 
     setupVisibilityCulling();
     descriptionBalloon();
@@ -382,14 +607,10 @@
       }
 
       const pickedObjectId = pickedObject.id.toString();
-      const targetObject = jsonArray.find(function (entry) {
-        return entry.id === pickedObjectId;
-      });
-      if (!targetObject) {
+      const text = tweetTextById.get(pickedObjectId);
+      if (!text) {
         return;
       }
-
-      const text = targetObject.text;
       const windowWidth = $(window).width();
       $(tweetMessageDiv).fadeIn(200);
       adjustDivPosition();
@@ -467,19 +688,16 @@
 
   function textSearch() {
     $(tweetMessageDiv).hide();
-    const searchQuery = String(document.getElementById("searchQuery").value);
-    const matchedIdSet =
-      searchQuery === ""
-        ? null
-        : new Set(
-            jsonArray
-              .filter(function (obj) {
-                return obj.text.includes(searchQuery);
-              })
-              .map(function (obj) {
-                return obj.id;
-              })
-          );
+    const searchQuery = String(document.getElementById("searchQuery").value).trim();
+    const matchedIdSet = searchQuery === "" ? null : new Set();
+
+    if (searchQuery !== "") {
+      tweetTextById.forEach(function (text, id) {
+        if (text.includes(searchQuery)) {
+          matchedIdSet.add(id);
+        }
+      });
+    }
 
     if (!tweetBillboards || !tweetLabels) {
       return;
