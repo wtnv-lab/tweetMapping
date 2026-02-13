@@ -272,6 +272,7 @@
     translucencyByDistance = new Cesium.NearFarScalar(500.0, 1.0, 3000000, 0.0);
     const verticalOrigin = Cesium.VerticalOrigin.CENTER;
     const sliceText = getDevice() === 1 ? 10 : 20;
+    let lastCounterUpdate = 0;
 
     let jsonNum = 0;
 
@@ -320,7 +321,11 @@
           });
 
           jsonNum++;
-          loadingDiv.innerHTML = "<p>" + jsonNum + "/" + json.length + "</p>";
+          const now = Date.now();
+          if (now - lastCounterUpdate >= 100 || jsonNum === json.length) {
+            lastCounterUpdate = now;
+            loadingDiv.innerHTML = "<p>" + jsonNum + "/" + json.length + "</p>";
+          }
         }
         viewer.scene.requestRender();
       }, 10);
@@ -428,19 +433,20 @@
     const input = document.getElementById("inputtext").value;
 
     geocoder.geocode({ address: input }, function (results, status) {
-      if (status !== google.maps.GeocoderStatus.OK) {
+      if (status !== "OK") {
         alert("見つかりません");
         return;
       }
 
-      const viewportObj = results[0].geometry.viewport;
-      const southNorth = viewportObj[Object.keys(viewportObj)[0]];
-      const westEast = viewportObj[Object.keys(viewportObj)[1]];
-      const south = southNorth[Object.keys(southNorth)[0]];
-      const north = southNorth[Object.keys(southNorth)[1]];
-      const west = westEast[Object.keys(westEast)[0]];
-      const east = westEast[Object.keys(westEast)[1]];
-      const rectangle = Cesium.Rectangle.fromDegrees(west, south, east, north);
+      const viewport = results[0].geometry.viewport;
+      const southWest = viewport.getSouthWest();
+      const northEast = viewport.getNorthEast();
+      const rectangle = Cesium.Rectangle.fromDegrees(
+        southWest.lng(),
+        southWest.lat(),
+        northEast.lng(),
+        northEast.lat()
+      );
       viewer.camera.flyTo({
         destination: rectangle,
         easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
@@ -462,9 +468,18 @@
   function textSearch() {
     $(tweetMessageDiv).hide();
     const searchQuery = String(document.getElementById("searchQuery").value);
-    const targetObject = jsonArray.filter(function (obj) {
-      return obj.text.includes(searchQuery);
-    });
+    const matchedIdSet =
+      searchQuery === ""
+        ? null
+        : new Set(
+            jsonArray
+              .filter(function (obj) {
+                return obj.text.includes(searchQuery);
+              })
+              .map(function (obj) {
+                return obj.id;
+              })
+          );
 
     if (!tweetBillboards || !tweetLabels) {
       return;
@@ -474,30 +489,22 @@
       const billboard = tweetBillboards.get(i);
       const label = tweetLabels.get(i);
 
-      if (searchQuery === "") {
-        billboard.translucencyByDistance = translucencyByDistance;
-        label.translucencyByDistance = translucencyByDistance;
-      } else if (
-        targetObject.find(function (v) {
-          return v.id === billboard.id;
-        })
-      ) {
-        billboard.translucencyByDistance = undefined;
-        label.translucencyByDistance = undefined;
+      const matched = !matchedIdSet || matchedIdSet.has(billboard.id);
+      if (matched) {
+        if (searchQuery === "") {
+          billboard.translucencyByDistance = translucencyByDistance;
+          label.translucencyByDistance = translucencyByDistance;
+        } else {
+          billboard.translucencyByDistance = undefined;
+          label.translucencyByDistance = undefined;
+        }
       } else {
         billboard.translucencyByDistance = translucencyByDistance;
         label.translucencyByDistance = translucencyByDistance;
       }
     }
 
-    visibleFilterIds =
-      searchQuery === ""
-        ? null
-        : new Set(
-            targetObject.map(function (obj) {
-              return obj.id;
-            })
-          );
+    visibleFilterIds = matchedIdSet;
     updateVisibleTweets();
   }
 
