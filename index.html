@@ -63,6 +63,11 @@
 			<span class="icon-font">help</span>
 		</div>
 	</div>
+	<div id="buttonAR" class="general-button" style="display:none;">
+		<div class="button-content">
+			<span class="button-text">AR</span>
+		</div>
+	</div>
 	<div id="buttonGeo" class="general-button" onclick="flyToMyLocation();">
 		<div class="button-content">
 			<span class="icon-font">geo</span>
@@ -72,6 +77,28 @@
 		<p>Loading...</p>
 	</div>
 	<script src="js/main.js"></script>
+	<script>
+		(function () {
+			var arButton = document.getElementById("buttonAR");
+			if (!arButton) {
+				return;
+			}
+			var ua = navigator.userAgent || "";
+			var isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
+			var isTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
+			var coarse = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+			var touch = (navigator.maxTouchPoints || 0) > 0;
+			var canUseAR = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && navigator.geolocation);
+			var isMobileOrTablet = isPhone || isTablet || (touch && coarse);
+			if (!isMobileOrTablet || !canUseAR) {
+				return;
+			}
+			arButton.style.display = "inline-block";
+			arButton.addEventListener("click", function () {
+				window.location.href = "ar.html";
+			});
+		})();
+	</script>
 </body>
 
 </html>

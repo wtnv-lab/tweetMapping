@@ -139,17 +139,44 @@ button.cesium-infoBox-close {
 
 #buttonAbout {
     position: absolute;
-    top: 8px;
+    top: calc(8px + env(safe-area-inset-top));
     right: 8px;
     z-index: 10005;
     opacity: 0.8;
 }
 
+#buttonAR {
+    position: absolute;
+    top: calc(84px + env(safe-area-inset-top));
+    right: 8px;
+    z-index: 10005;
+    opacity: 0.9;
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+}
+
+#buttonAR .button-content {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+#buttonAR .button-text {
+    display: block;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    padding: 0;
+}
+
 #buttonGeo {
     position: absolute;
-    bottom: 12px;
-    left: 50%;
-    margin-left: -20px;
+    top: calc(46px + env(safe-area-inset-top));
+    right: 8px;
     opacity: 0.9;
 }
 

@@ -105,14 +105,15 @@
 
     #launchCard {
       width: min(88vw, 420px);
-      border: 1px solid var(--ui-border);
       border-radius: 10px;
-      background: var(--ui-bg);
-      box-shadow: var(--ui-shadow);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      padding: 12px 10px 10px 10px;
-      outline: var(--ui-outline);
+      background: linear-gradient(180deg, rgba(10, 12, 16, 0.52), rgba(8, 10, 14, 0.42));
+      box-shadow:
+        0 12px 34px rgba(0, 0, 0, 0.28),
+        0 0 44px rgba(0, 0, 0, 0.22),
+        0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 12px 12px 12px 12px;
       pointer-events: auto;
       text-align: center;
     }
@@ -127,59 +128,85 @@
 
     #launchStatus {
       margin: 0;
-      font-size: 12px;
-      line-height: 1.4;
-      color: var(--ui-fg);
-      opacity: 0.88;
+      font-size: 16px;
+      line-height: 1.2;
+      color: orange;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+    }
+
+    #launchLoading {
+      display: none;
+      width: 54px;
+      height: 54px;
+      margin: 2px auto 10px auto;
+      object-fit: contain;
+    }
+
+    #centerPanel.is-loading #launchLoading {
+      display: block;
+    }
+
+    #centerPanel.is-loading #startButton {
+      opacity: 0.75;
+      pointer-events: none;
     }
 
     #startButton {
       margin-top: 10px;
-      border: 1px solid var(--ui-border);
-      border-radius: 8px;
-      background: var(--ui-bg);
-      box-shadow: var(--ui-shadow);
+      border: 1px solid rgba(174, 221, 255, 0.95);
+      border-radius: 10px;
+      background: linear-gradient(165deg, rgba(92, 180, 250, 0.95), rgba(38, 118, 186, 0.92));
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(180, 228, 255, 0.2) inset;
       color: var(--ui-fg);
-      height: 32px;
-      padding: 0 14px;
-      font-size: 13px;
+      height: 38px;
+      min-width: 120px;
+      padding: 0 18px;
+      font-size: 14px;
       font-weight: 700;
+      letter-spacing: 0.03em;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       -webkit-tap-highlight-color: transparent;
+      transform: translateY(0);
+      transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
     }
 
     #startButton:hover {
-      background: var(--ui-bg-strong);
-      border-color: rgba(255, 255, 255, 0.45);
+      filter: brightness(1.06);
+      transform: translateY(-1px);
     }
 
     #startButton:active {
-      background: rgba(14, 18, 24, 0.8);
-      border-color: rgba(255, 255, 255, 0.5);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28) inset;
+      transform: translateY(0);
+      filter: brightness(0.98);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(180, 228, 255, 0.2) inset;
     }
 
     #statusStrip {
-      bottom: 0;
-      padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+      top: calc(8px + env(safe-area-inset-top));
+      left: 8px;
+      right: auto;
+      width: min(70vw, 320px);
+      height: 32px;
+      padding: 0;
       display: flex;
-      justify-content: center;
+      align-items: center;
+      justify-content: flex-start;
     }
 
     #statusText {
       margin: 0;
-      font-size: 11px;
-      line-height: 1.3;
+      font-size: 10px;
+      line-height: 1.2;
       color: orange;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
-      text-align: center;
+      text-align: left;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 96vw;
+      max-width: 100%;
     }
 
     #tweetCard {
@@ -226,6 +253,28 @@
       color: var(--ui-fg);
       opacity: 0.9;
     }
+
+    #buttonMap {
+      position: fixed;
+      top: calc(8px + env(safe-area-inset-top));
+      right: 8px;
+      z-index: 5;
+      opacity: 0.9;
+      pointer-events: auto;
+      border: 1px solid var(--ui-border);
+      border-radius: 8px;
+      background: var(--ui-bg);
+      box-shadow: var(--ui-shadow);
+      color: var(--ui-fg);
+      height: 32px;
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 32px;
+      text-decoration: none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
   </style>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.js"></script>
@@ -234,6 +283,7 @@
   <div class="overlay" id="centerPanel">
     <div id="launchCard">
       <p id="launchTitle">東日本大震災 ツイートAR</p>
+      <img id="launchLoading" src="data/loading.gif" alt="Loading">
       <p id="launchStatus">「開始」を押してカメラ・位置情報を許可してください。</p>
       <button id="startButton" type="button">開始</button>
     </div>
@@ -242,6 +292,7 @@
   <div class="overlay" id="statusStrip">
     <p id="statusText">待機中</p>
   </div>
+  <a id="buttonMap" href="index.html" aria-label="地図版へ戻る">MAP</a>
 
   <video id="cameraFeed" autoplay playsinline muted></video>
   <div id="arRoot"></div>
@@ -272,6 +323,12 @@
       const locationPollIntervalMs = 5000;
       const minBuildIntervalMs = 1200;
       const maxLabelChars = 26;
+      const ua = navigator.userAgent || "";
+      const isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
+      const isTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
+      const coarse = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+      const touch = (navigator.maxTouchPoints || 0) > 0;
+      const isMobileOrTablet = isPhone || isTablet || (touch && coarse);
 
       let allTweets = [];
       let currentPosition = null;
@@ -699,9 +756,7 @@
           candidates.length +
           " 件（表示 " +
           count +
-          " 件, 半径 " +
-          Math.round(markerRadiusMeters / 1000) +
-          "km" +
+          " 件" +
           nearestText +
           "）";
         setStatus(message);
@@ -844,6 +899,11 @@
       }
 
       function startAR() {
+        if (!isMobileOrTablet) {
+          setLaunchStatus("AR版はスマートフォン・タブレット専用です。地図版をご利用ください。");
+          return;
+        }
+        centerPanel.classList.add("is-loading");
         setLaunchStatus("データを読み込み中...");
         startButton.disabled = true;
         const orientationPermissionPromise = requestOrientationPermission();
@@ -869,6 +929,7 @@
             }, 5000);
           })
           .catch(function (error) {
+            centerPanel.classList.remove("is-loading");
             setLaunchStatus("開始できませんでした: " + error.message);
             startButton.disabled = false;
             startButton.textContent = "開始";
@@ -898,6 +959,10 @@
         cameraStream = null;
       });
 
+      if (!isMobileOrTablet) {
+        setLaunchStatus("AR版はスマートフォン・タブレット専用です。右上のMAPから地図版へ戻れます。");
+        startButton.disabled = true;
+      }
       startButton.addEventListener("click", startAR);
     })();
   </script>
