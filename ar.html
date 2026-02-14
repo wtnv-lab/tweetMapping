@@ -458,21 +458,22 @@
           const clusterIndex = clusterSlots.get(clusterKey) || 0;
           clusterSlots.set(clusterKey, clusterIndex + 1);
           // Distance-driven vertical band: map near->top and far->bottom over the full viewport range.
-          const topBandY = 39.0;
-          const bottomBandY = -84.0;
+          const topBandY = 78.0;
+          const bottomBandY = -168.0;
           const distanceCurve = Math.pow(ratio, 0.86);
-          const baseY = topBandY + (bottomBandY - topBandY) * distanceCurve - 3.9;
+          const baseY = topBandY + (bottomBandY - topBandY) * distanceCurve - 7.8;
           const spreadStep = clamp(7.5 - ratio * 1.35, 5.4, 7.5);
           const laneOffset = directedOffsetUnits(laneIndex, ratio);
           const clusterOffset = directedOffsetUnits(clusterIndex, ratio);
           const densityBoost = 1 + Math.min(3.2, clusterIndex * 0.34 + laneIndex * 0.2);
           const combinedOffset = laneOffset + clusterOffset * 1.8;
-          const directionalBias = ratio <= 0.45 ? clusterIndex * 1.13 : ratio >= 0.7 ? -clusterIndex * 2.18 : 0;
-          const markerY = clamp(baseY + (combinedOffset + directionalBias) * spreadStep * densityBoost, -93.0, 48.0);
+          const directionalBias = ratio <= 0.45 ? clusterIndex * 2.26 : ratio >= 0.7 ? -clusterIndex * 4.36 : 0;
+          const verticalScreenShiftY = -20.0;
+          const markerY = clamp(baseY + (combinedOffset + directionalBias) * spreadStep * densityBoost + verticalScreenShiftY, -246.0, 36.0);
           const iconSize = clamp(2.7 - ratio * 1.2, 1.5, 2.7);
           const label = toLabel(t.text);
           const baseLabelFontPx = (90 + ratio * 140) * 1.5;
-          const distanceFontScale = 1 - ratio * 0.5;
+          const distanceFontScale = 1 - ratio;
           const labelFontPx = Math.round(baseLabelFontPx * distanceFontScale);
           const labelTexture = labelTextureDataUrl(label, labelFontPx);
           const labelHeight = clamp(3.4 + ratio * 2.6, 3.4, 6.0);
