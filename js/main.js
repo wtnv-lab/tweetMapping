@@ -67,6 +67,7 @@
   let cullingEnabled = false;
   let cullTimer = null;
   let tileLoadTimer = null;
+  const isSmartphone = getDevice() === 1;
   const cullMarginPx = 32;
   const tileLoadDebounceMs = 120;
   const tilePrefetchMargin = 1;
@@ -99,13 +100,33 @@
   }
 
   (function screenAdjust() {
-    if (getDevice() !== 1) {
+    if (!isSmartphone) {
       setTimeout(resizeWindow, 0);
       return;
     }
     $(".titleImage").css("width", "100%");
     setTimeout(resizeWindow, 1000);
   })();
+
+  function applySmartphoneGoogle2DLayer() {
+    if (!isSmartphone) {
+      return;
+    }
+
+    const googleRoadMapUrl =
+      "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}" +
+      (googleMapsApiKey ? "&key=" + encodeURIComponent(googleMapsApiKey) : "");
+
+    viewer.imageryLayers.removeAll();
+    baseImageryLayer = viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: googleRoadMapUrl,
+        credit: "Google",
+        maximumLevel: 20,
+      })
+    );
+    baseImageryLayer.brightness = 0.9;
+  }
 
   function loadCesium() {
     viewer = new Cesium.Viewer(cesiumContainerDiv, {
@@ -122,7 +143,10 @@
       useBrowserRecommendedResolution: true,
     });
 
-    baseImageryLayer = viewer.imageryLayers.get(0);
+    applySmartphoneGoogle2DLayer();
+    if (!baseImageryLayer) {
+      baseImageryLayer = viewer.imageryLayers.get(0);
+    }
     if (baseImageryLayer) {
       baseImageryLayer.brightness = baseBrightnessDefault;
     }
@@ -137,8 +161,10 @@
     cesiumDiv.addEventListener("gesturechange", preventScroll, false);
     cesiumDiv.addEventListener("gestureend", preventScroll, false);
 
-    // Start photogrammetry loading as early as possible to reduce zoom-in lag.
-    loadPhotogrammetry();
+    if (!isSmartphone) {
+      // Start photogrammetry loading as early as possible to reduce zoom-in lag.
+      loadPhotogrammetry();
+    }
     openingSequence();
   }
 
@@ -200,7 +226,7 @@
       .then(function () {
         return new Promise(function (resolve) {
           setTimeout(function () {
-            viewer.scene.globe.show = false;
+            viewer.scene.globe.show = isSmartphone;
             resolve();
           }, 500);
         });
@@ -208,6 +234,10 @@
   }
 
   function loadPhotogrammetry() {
+    if (isSmartphone) {
+      return Promise.resolve(null);
+    }
+
     if (photogrammetryTilesetPromise) {
       return photogrammetryTilesetPromise;
     }
@@ -570,7 +600,7 @@
     labelPixelOffset = new Cesium.Cartesian2(20.0, 0);
     labelScaleByDistance = new Cesium.NearFarScalar(0.0, 1.4, 7500, 0.7);
     labelVerticalOrigin = Cesium.VerticalOrigin.CENTER;
-    labelSliceText = getDevice() === 1 ? 10 : 20;
+    labelSliceText = isSmartphone ? 10 : 20;
 
     $.getJSON(tweetTileIndexUrl)
       .done(function (indexData) {
@@ -645,7 +675,7 @@
         const rightMargin = windowWidth - e.pageX;
         $(tweetMessageDiv).html(text);
 
-        if (getDevice() !== 1) {
+        if (!isSmartphone) {
           if (rightMargin < 320) {
             $(tweetMessageDiv).offset({ top: e.pageY + 8, left: e.pageX - 312 });
           } else {
