@@ -186,7 +186,7 @@
 
     #statusStrip {
       top: calc(8px + env(safe-area-inset-top));
-      left: 8px;
+      left: 50%;
       right: auto;
       width: min(70vw, 320px);
       height: 32px;
@@ -194,6 +194,7 @@
       display: flex;
       align-items: center;
       justify-content: flex-start;
+      transform: translateX(-50%);
     }
 
     #statusText {
