@@ -479,6 +479,7 @@
         cameraObj.updateMatrixWorld(true);
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const offscreenMargin = 48;
         for (let i = 0; i < markerEntities.length; i++) {
           const marker = markerEntities[i];
           const screenPos = projectToScreen(marker.worldPosition, cameraObj, width, height);
@@ -501,6 +502,15 @@
             // Smooth sensor jitter while preserving follow responsiveness.
             marker.screenX += (targetX - marker.screenX) * 0.22;
             marker.screenY += (targetY - marker.screenY) * 0.22;
+          }
+          if (
+            marker.screenX < -offscreenMargin ||
+            marker.screenX > width + offscreenMargin ||
+            marker.screenY < -offscreenMargin ||
+            marker.screenY > height + offscreenMargin
+          ) {
+            marker.root.style.display = "none";
+            continue;
           }
           marker.root.style.display = "inline-flex";
           marker.root.style.left = marker.screenX.toFixed(1) + "px";
