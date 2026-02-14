@@ -78,46 +78,88 @@
       position: fixed;
       left: 0;
       right: 0;
-      z-index: 3;
+      z-index: 4;
       pointer-events: none;
     }
 
-    #topPanel {
-      top: 0;
+    #centerPanel {
+      inset: 0;
       padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #centerPanel.hidden {
+      display: none;
+    }
+
+    #launchCard {
+      width: min(88vw, 420px);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 16px;
+      background: linear-gradient(160deg, rgba(17, 29, 45, 0.78), rgba(31, 67, 100, 0.56));
+      box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 16px 16px 14px 16px;
+      pointer-events: auto;
+      text-align: center;
+    }
+
+    #launchTitle {
+      margin: 0 0 8px 0;
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: rgba(242, 248, 255, 0.95);
+    }
+
+    #launchStatus {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(231, 240, 250, 0.88);
+    }
+
+    #startButton {
+      margin-top: 12px;
+      border: 1px solid rgba(165, 214, 255, 0.58);
+      border-radius: 12px;
+      background: linear-gradient(160deg, rgba(66, 148, 221, 0.86), rgba(41, 104, 168, 0.84));
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+      color: #f3f6fa;
+      height: 40px;
+      padding: 0 20px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #statusStrip {
+      bottom: 0;
+      padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
       display: flex;
       justify-content: center;
     }
 
-    #statusCard {
-      max-width: 90vw;
-      min-width: 280px;
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      border-radius: 12px;
-      background: rgba(20, 24, 30, 0.72);
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      padding: 10px 12px;
-      pointer-events: auto;
-    }
-
     #statusText {
       margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    #startButton {
-      margin-top: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      border-radius: 8px;
-      background: rgba(52, 114, 168, 0.76);
-      color: #f3f6fa;
-      height: 34px;
-      padding: 0 14px;
-      font-size: 13px;
-      cursor: pointer;
+      font-size: 10px;
+      line-height: 1.25;
+      letter-spacing: 0.02em;
+      color: rgba(238, 245, 252, 0.7);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 96vw;
     }
 
     #tweetCard {
@@ -168,11 +210,16 @@
   <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.js"></script>
 </head>
 <body>
-  <div class="overlay" id="topPanel">
-    <div id="statusCard">
-      <p id="statusText">「開始」を押してカメラ・位置情報を許可してください。</p>
+  <div class="overlay" id="centerPanel">
+    <div id="launchCard">
+      <p id="launchTitle">東日本大震災 ツイートAR</p>
+      <p id="launchStatus">「開始」を押してカメラ・位置情報を許可してください。</p>
       <button id="startButton" type="button">開始</button>
     </div>
+  </div>
+
+  <div class="overlay" id="statusStrip">
+    <p id="statusText">待機中</p>
   </div>
 
   <video id="cameraFeed" autoplay playsinline muted></video>
@@ -186,6 +233,8 @@
   <script>
     (function () {
       const statusText = document.getElementById("statusText");
+      const centerPanel = document.getElementById("centerPanel");
+      const launchStatus = document.getElementById("launchStatus");
       const startButton = document.getElementById("startButton");
       const tweetCard = document.getElementById("tweetCard");
       const tweetBody = document.getElementById("tweetBody");
@@ -247,6 +296,14 @@
 
       function setStatus(message) {
         statusText.textContent = message;
+      }
+
+      function setLaunchStatus(message) {
+        launchStatus.textContent = message;
+      }
+
+      function hideLaunchPanel() {
+        centerPanel.classList.add("hidden");
       }
 
       function bindSceneEvents(targetScene) {
@@ -400,7 +457,8 @@
         }
         const x = (projectedPoint.x * 0.5 + 0.5) * width;
         const y = (-projectedPoint.y * 0.5 + 0.5) * height;
-        if (x < -120 || x > width + 120 || y < -120 || y > height + 120) {
+        // Y is clamped later by UI layout logic; avoid hiding markers on strong tilt.
+        if (x < -220 || x > width + 220) {
           return null;
         }
         return { x: x, y: y };
@@ -428,11 +486,14 @@
             marker.root.style.display = "none";
             continue;
           }
-          const nearToFarY = height * (0.04 + marker.distanceNorm * 0.56);
           const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
-          const yScatter = (marker.laneOffset * 24 + marker.clusterOffset * 44) * (0.6 + marker.distanceNorm * 1.2);
+          const yScatter = (marker.laneOffset * 14 + marker.clusterOffset * 24) * (0.35 + marker.distanceNorm * 0.55);
+          const distanceYOffset = (marker.distanceNorm - 0.5) * height * 0.56;
           const targetX = screenPos.x * 0.85 + (width * 0.5) * 0.15 + xScatter;
-          const targetY = clamp(screenPos.y * 0.62 + nearToFarY * 0.38 + yScatter, height * 0.02, height * 0.62);
+          const tiltPivotY = height * 0.35;
+          const tiltReducedY = tiltPivotY + (screenPos.y - tiltPivotY) * 0.25;
+          const limitedTiltY = clamp(tiltReducedY, tiltPivotY - height * 0.06, tiltPivotY + height * 0.06);
+          const targetY = clamp(limitedTiltY + distanceYOffset + yScatter, height * -0.04, height * 0.7);
           if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
             marker.screenX = targetX;
             marker.screenY = targetY;
@@ -751,20 +812,24 @@
       }
 
       function startAR() {
-        setStatus("データ読み込み中...");
+        setLaunchStatus("データを読み込み中...");
         startButton.disabled = true;
         const orientationPermissionPromise = requestOrientationPermission();
         Promise.all([orientationPermissionPromise, requestCameraPermission()])
           .then(function () {
+            setLaunchStatus("ツイートデータを読み込んでいます...");
             return loadTweets();
           })
           .then(function () {
-            setStatus("位置情報を取得しています...");
+            setLaunchStatus("位置情報を取得しています...");
             createScene();
             bindOrientationDiagnostics();
             startLocationPolling();
             startMarkerRenderLoop();
             startButton.textContent = "起動中";
+            setTimeout(function () {
+              hideLaunchPanel();
+            }, 450);
             setTimeout(function () {
               if (!cameraStream) {
                 setStatus("カメラ映像を取得できません。Safari設定のカメラ許可を確認してください。");
@@ -772,7 +837,7 @@
             }, 5000);
           })
           .catch(function (error) {
-            setStatus("開始できませんでした: " + error.message);
+            setLaunchStatus("開始できませんでした: " + error.message);
             startButton.disabled = false;
             startButton.textContent = "開始";
           });
