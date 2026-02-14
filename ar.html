@@ -19,8 +19,6 @@
       position: fixed;
       inset: 0;
       z-index: 1;
-      opacity: 0;
-      transition: opacity 220ms ease;
     }
 
     .overlay {
@@ -114,21 +112,14 @@
     </div>
   </div>
 
-  <a-scene
-    id="arScene"
-    embedded
-    vr-mode-ui="enabled: false"
-    renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;"
-    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;">
-    <a-entity id="arCamera" camera gps-new-camera="gpsMinDistance: 5"></a-entity>
-  </a-scene>
+  <div id="arRoot"></div>
 
   <script>
     (function () {
       const statusText = document.getElementById("statusText");
       const startButton = document.getElementById("startButton");
       const tweetText = document.getElementById("tweetText");
-      const scene = document.getElementById("arScene");
+      const arRoot = document.getElementById("arRoot");
 
       const tweetDataUrl = "data/czml/tweets.json";
       const maxMarkers = 36;
@@ -140,26 +131,31 @@
       let lastBuildPosition = null;
       let markerEntities = [];
       let dataLoaded = false;
+      let scene = null;
 
       function setStatus(message) {
         statusText.textContent = message;
       }
 
-      scene.addEventListener("camera-init", function () {
-        scene.style.opacity = "1";
-        setStatus("カメラ起動完了。位置情報を待っています...");
-      });
+      function bindSceneEvents(targetScene) {
+        targetScene.addEventListener("camera-init", function () {
+          setStatus("カメラ起動完了。位置情報を待っています...");
+        });
 
-      scene.addEventListener("camera-error", function (event) {
-        const detail = (event && event.detail && event.detail.message) || "camera-error";
-        setStatus("カメラ起動に失敗しました: " + detail);
-      });
+        targetScene.addEventListener("camera-error", function (event) {
+          const detail = (event && event.detail && event.detail.message) || "camera-error";
+          setStatus("カメラ起動に失敗しました: " + detail);
+        });
+      }
 
-      scene.addEventListener("gps-camera-update-position", function () {
-        if (scene.style.opacity !== "1") {
-          scene.style.opacity = "1";
-        }
-      });
+      function createScene() {
+        arRoot.innerHTML =
+          '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;" arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;">' +
+          '<a-entity id="arCamera" camera gps-camera="minDistance: 5;"></a-entity>' +
+          "</a-scene>";
+        scene = document.getElementById("arScene");
+        bindSceneEvents(scene);
+      }
 
       function haversineMeters(lat1, lon1, lat2, lon2) {
         const toRad = Math.PI / 180.0;
@@ -174,6 +170,9 @@
       }
 
       function clearMarkers() {
+        if (!scene) {
+          return;
+        }
         for (let i = 0; i < markerEntities.length; i++) {
           const marker = markerEntities[i];
           if (marker.parentNode) {
@@ -192,7 +191,7 @@
       }
 
       function buildMarkers() {
-        if (!currentPosition || !dataLoaded) {
+        if (!scene || !currentPosition || !dataLoaded) {
           return;
         }
 
@@ -223,7 +222,7 @@
           const t = candidate.tweet;
 
           const root = document.createElement("a-entity");
-          root.setAttribute("gps-new-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
+          root.setAttribute("gps-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
 
           const panel = document.createElement("a-plane");
           panel.setAttribute("height", "1.1");
@@ -378,15 +377,10 @@
           })
           .then(function () {
             setStatus("位置情報を取得しています...");
+            createScene();
             startWatchPosition();
             startButton.disabled = true;
             startButton.textContent = "起動中";
-            // If camera-init is not fired, show an actionable hint.
-            setTimeout(function () {
-              if (scene.style.opacity !== "1") {
-                setStatus("カメラ映像を取得できません。HTTPS接続とカメラ権限を確認してください。");
-              }
-            }, 8000);
           })
           .catch(function (error) {
             setStatus("開始できませんでした: " + error.message);
