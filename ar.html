@@ -243,7 +243,7 @@
       function createScene() {
         arRoot.innerHTML =
           '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
-          '<a-entity id="arCamera" camera gps-camera="minDistance: 5;" rotation-reader></a-entity>' +
+          '<a-entity id="arCamera" camera position="0 1.6 0"></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
         bindSceneEvents(scene);
@@ -259,6 +259,20 @@
           Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return 6371000 * c;
+      }
+
+      function bearingDegrees(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180.0;
+        const y = Math.sin((lon2 - lon1) * toRad) * Math.cos(lat2 * toRad);
+        const x =
+          Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) -
+          Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos((lon2 - lon1) * toRad);
+        const brng = (Math.atan2(y, x) * 180) / Math.PI;
+        return (brng + 360) % 360;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
       }
 
       function clearMarkers() {
@@ -316,30 +330,41 @@
         for (let i = 0; i < count; i++) {
           const candidate = candidates[i];
           const t = candidate.tweet;
+          const distance = candidate.distance;
+          const bearing = bearingDegrees(lat, lon, t.lat, t.lon);
+          const heading = deviceHeading === null ? 0 : deviceHeading;
+          const relativeDeg = ((bearing - heading + 540) % 360) - 180;
+          const relativeRad = (relativeDeg * Math.PI) / 180;
+          // Compress far distances so 10km scope still stays visible in camera space.
+          const projected = clamp(distance * 0.35, 20, 260);
+          const x = Math.sin(relativeRad) * projected;
+          const z = -Math.cos(relativeRad) * projected;
+          const markerScale = clamp(2.2 + distance * 0.012, 4, 28);
+          const markerY = clamp(2.5 + distance * 0.004, 3, 16);
 
           const root = document.createElement("a-entity");
-          root.setAttribute("gps-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
+          root.setAttribute("position", x.toFixed(2) + " " + markerY.toFixed(2) + " " + z.toFixed(2));
 
           const pin = document.createElement("a-sphere");
-          pin.setAttribute("radius", "0.9");
+          pin.setAttribute("radius", markerScale.toFixed(2));
           pin.setAttribute("color", "#2da7ff");
           pin.setAttribute("material", "side: double;");
-          pin.setAttribute("position", "0 3.2 0");
+          pin.setAttribute("position", "0 0 0");
           root.appendChild(pin);
 
           const panel = document.createElement("a-plane");
-          panel.setAttribute("height", "2.2");
-          panel.setAttribute("width", "7.4");
+          panel.setAttribute("height", clamp(markerScale * 0.9, 4, 18).toFixed(2));
+          panel.setAttribute("width", clamp(markerScale * 2.6, 10, 44).toFixed(2));
           panel.setAttribute("color", "#14181e");
-          panel.setAttribute("opacity", "0.88");
+          panel.setAttribute("opacity", "0.84");
           panel.setAttribute("material", "transparent: true; side: double;");
-          panel.setAttribute("position", "0 5.4 0");
+          panel.setAttribute("position", "0 " + clamp(markerScale * 1.8, 8, 44).toFixed(2) + " 0");
 
           const text = document.createElement("a-text");
-          text.setAttribute("value", toLabel(t.text));
+          text.setAttribute("value", toLabel(t.text) + " (" + Math.round(distance) + "m)");
           text.setAttribute("align", "center");
           text.setAttribute("color", "#f3f6fa");
-          text.setAttribute("width", "14");
+          text.setAttribute("width", clamp(markerScale * 4.8, 18, 90).toFixed(2));
           text.setAttribute("position", "0 0 0.02");
           panel.appendChild(text);
 
