@@ -12,8 +12,12 @@
 
   if (googleMapsApiKey) {
     const googleMapsScript = document.createElement("script");
-    googleMapsScript.src = "https://maps.googleapis.com/maps/api/js?key=" + googleMapsApiKey + "&callback=initMap";
+    googleMapsScript.src =
+      "https://maps.googleapis.com/maps/api/js?key=" +
+      googleMapsApiKey +
+      "&callback=initMap&loading=async";
     googleMapsScript.async = true;
+    googleMapsScript.defer = true;
     window.initMap = function () {};
     document.head.appendChild(googleMapsScript);
   }
