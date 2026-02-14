@@ -245,6 +245,9 @@
       function createScene() {
         arRoot.innerHTML =
           '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
+          '<a-assets timeout="10000"><img id="twitterIconAsset" src="' +
+          twitterIconUrl +
+          '" crossorigin="anonymous"></a-assets>' +
           '<a-entity id="arCamera" camera look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" position="0 1.6 0"></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
@@ -359,10 +362,10 @@
           root.setAttribute("position", x.toFixed(2) + " " + markerY.toFixed(2) + " " + z.toFixed(2));
 
           const icon = document.createElement("a-image");
-          icon.setAttribute("src", twitterIconUrl);
+          icon.setAttribute("src", "#twitterIconAsset");
           icon.setAttribute("width", iconSize.toFixed(2));
           icon.setAttribute("height", iconSize.toFixed(2));
-          icon.setAttribute("material", "transparent: true; side: double;");
+          icon.setAttribute("material", "transparent: true; side: double; alphaTest: 0.2; shader: flat;");
           icon.setAttribute("position", "0 0 0");
           root.appendChild(icon);
 
