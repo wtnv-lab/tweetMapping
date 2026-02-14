@@ -67,7 +67,7 @@
   let cullingEnabled = false;
   let cullTimer = null;
   let tileLoadTimer = null;
-  const isSmartphone = getDevice() === 1;
+  const isSmartphone = detectSmartphoneContext();
   const cullMarginPx = 32;
   const tileLoadDebounceMs = 120;
   const tilePrefetchMargin = 1;
@@ -89,6 +89,31 @@
       return 2;
     }
     return 0;
+  }
+
+  function detectSmartphoneContext() {
+    const ua = navigator.userAgent || "";
+    const uaMobile = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
+
+    const shortEdge = Math.min(window.screen.width || 0, window.screen.height || 0);
+    const longEdge = Math.max(window.screen.width || 0, window.screen.height || 0);
+    const smartphoneScreen = shortEdge > 0 && shortEdge <= 480 && longEdge <= 932;
+
+    const compactViewport = Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 480;
+    const coarsePointer =
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+    const touchDevice = (navigator.maxTouchPoints || 0) > 0;
+
+    if (getDevice() === 1) {
+      return true;
+    }
+    if (uaMobile) {
+      return true;
+    }
+    if (touchDevice && coarsePointer && (smartphoneScreen || compactViewport)) {
+      return true;
+    }
+    return false;
   }
 
   function resizeWindow() {
