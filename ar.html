@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>東日本大震災ツイートAR</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+      background: #000;
+      color: #f3f6fa;
+    }
+
+    #arScene {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    .overlay {
+      position: fixed;
+      left: 0;
+      right: 0;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    #topPanel {
+      top: 0;
+      padding: 12px;
+      display: flex;
+      justify-content: center;
+    }
+
+    #statusCard {
+      max-width: 90vw;
+      min-width: 280px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 12px;
+      background: rgba(20, 24, 30, 0.72);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 10px 12px;
+      pointer-events: auto;
+    }
+
+    #statusText {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    #startButton {
+      margin-top: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 8px;
+      background: rgba(52, 114, 168, 0.76);
+      color: #f3f6fa;
+      height: 34px;
+      padding: 0 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #bottomPanel {
+      bottom: 0;
+      padding: 12px;
+      display: flex;
+      justify-content: center;
+    }
+
+    #tweetCard {
+      width: min(92vw, 440px);
+      min-height: 48px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 12px;
+      background: rgba(20, 24, 30, 0.72);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 10px 12px;
+      pointer-events: auto;
+    }
+
+    #tweetText {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #f3f6fa;
+      word-break: break-word;
+    }
+  </style>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.js"></script>
+</head>
+<body>
+  <div class="overlay" id="topPanel">
+    <div id="statusCard">
+      <p id="statusText">「開始」を押してカメラ・位置情報を許可してください。</p>
+      <button id="startButton" type="button">開始</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="bottomPanel">
+    <div id="tweetCard">
+      <p id="tweetText">近くのツイートが見つかるとここに本文を表示します。</p>
+    </div>
+  </div>
+
+  <a-scene
+    id="arScene"
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;"
+    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;">
+    <a-entity id="arCamera" camera gps-new-camera="gpsMinDistance: 5"></a-entity>
+  </a-scene>
+
+  <script>
+    (function () {
+      const statusText = document.getElementById("statusText");
+      const startButton = document.getElementById("startButton");
+      const tweetText = document.getElementById("tweetText");
+      const scene = document.getElementById("arScene");
+
+      const tweetDataUrl = "data/czml/tweets.json";
+      const maxMarkers = 36;
+      const markerRadiusMeters = 3000;
+      const rebuildThresholdMeters = 120;
+
+      let allTweets = [];
+      let currentPosition = null;
+      let lastBuildPosition = null;
+      let markerEntities = [];
+      let dataLoaded = false;
+
+      function setStatus(message) {
+        statusText.textContent = message;
+      }
+
+      function haversineMeters(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180.0;
+        const dLat = (lat2 - lat1) * toRad;
+        const dLon = (lon2 - lon1) * toRad;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return 6371000 * c;
+      }
+
+      function clearMarkers() {
+        for (let i = 0; i < markerEntities.length; i++) {
+          const marker = markerEntities[i];
+          if (marker.parentNode) {
+            marker.parentNode.removeChild(marker);
+          }
+        }
+        markerEntities = [];
+      }
+
+      function toLabel(text) {
+        const trimmed = String(text || "").replace(/\s+/g, " ").trim();
+        if (trimmed.length <= 18) {
+          return trimmed;
+        }
+        return trimmed.slice(0, 18) + "...";
+      }
+
+      function buildMarkers() {
+        if (!currentPosition || !dataLoaded) {
+          return;
+        }
+
+        const lat = currentPosition.coords.latitude;
+        const lon = currentPosition.coords.longitude;
+        const candidates = [];
+
+        for (let i = 0; i < allTweets.length; i++) {
+          const t = allTweets[i];
+          const distance = haversineMeters(lat, lon, t.lat, t.lon);
+          if (distance <= markerRadiusMeters) {
+            candidates.push({
+              tweet: t,
+              distance: distance,
+            });
+          }
+        }
+
+        candidates.sort(function (a, b) {
+          return a.distance - b.distance;
+        });
+
+        clearMarkers();
+
+        const count = Math.min(maxMarkers, candidates.length);
+        for (let i = 0; i < count; i++) {
+          const candidate = candidates[i];
+          const t = candidate.tweet;
+
+          const root = document.createElement("a-entity");
+          root.setAttribute("gps-new-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
+
+          const panel = document.createElement("a-plane");
+          panel.setAttribute("height", "1.1");
+          panel.setAttribute("width", "3.3");
+          panel.setAttribute("color", "#14181e");
+          panel.setAttribute("opacity", "0.78");
+          panel.setAttribute("material", "transparent: true;");
+          panel.setAttribute("position", "0 1.6 0");
+
+          const text = document.createElement("a-text");
+          text.setAttribute("value", toLabel(t.text));
+          text.setAttribute("align", "center");
+          text.setAttribute("color", "#f3f6fa");
+          text.setAttribute("width", "7");
+          text.setAttribute("position", "0 0 0.02");
+          panel.appendChild(text);
+
+          root.appendChild(panel);
+          root.dataset.tweetText = t.text;
+          root.addEventListener("click", function (event) {
+            tweetText.textContent = event.currentTarget.dataset.tweetText || "";
+          });
+
+          markerEntities.push(root);
+          scene.appendChild(root);
+        }
+
+        const message =
+          "近傍 " + candidates.length + " 件（表示 " + count + " 件, 半径 " + Math.round(markerRadiusMeters / 1000) + "km）";
+        setStatus(message);
+        lastBuildPosition = {
+          latitude: lat,
+          longitude: lon,
+        };
+      }
+
+      function maybeRebuildMarkers() {
+        if (!currentPosition) {
+          return;
+        }
+        if (!lastBuildPosition) {
+          buildMarkers();
+          return;
+        }
+
+        const moved = haversineMeters(
+          lastBuildPosition.latitude,
+          lastBuildPosition.longitude,
+          currentPosition.coords.latitude,
+          currentPosition.coords.longitude
+        );
+        if (moved >= rebuildThresholdMeters) {
+          buildMarkers();
+        }
+      }
+
+      function loadTweets() {
+        return fetch(tweetDataUrl)
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error("HTTP " + response.status);
+            }
+            return response.json();
+          })
+          .then(function (json) {
+            const tweets = [];
+            for (let i = 0; i < json.length; i++) {
+              const item = json[i];
+              const coords = item && item.position && item.position.cartographicDegrees;
+              if (!Array.isArray(coords) || coords.length < 2) {
+                continue;
+              }
+              const lon = Number(coords[0]);
+              const lat = Number(coords[1]);
+              if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+                continue;
+              }
+              tweets.push({
+                id: String(item.id),
+                text: String(item.text || ""),
+                lat: lat,
+                lon: lon,
+              });
+            }
+            allTweets = tweets;
+            dataLoaded = true;
+          });
+      }
+
+      function requestOrientationPermission() {
+        if (typeof DeviceOrientationEvent === "undefined") {
+          return Promise.resolve();
+        }
+        if (typeof DeviceOrientationEvent.requestPermission !== "function") {
+          return Promise.resolve();
+        }
+        return DeviceOrientationEvent.requestPermission().then(function (state) {
+          if (state !== "granted") {
+            throw new Error("方位センサー権限が拒否されました。");
+          }
+        });
+      }
+
+      function startWatchPosition() {
+        if (!navigator.geolocation) {
+          setStatus("この端末は位置情報に対応していません。");
+          return;
+        }
+        navigator.geolocation.watchPosition(
+          function (position) {
+            currentPosition = position;
+            maybeRebuildMarkers();
+          },
+          function (error) {
+            setStatus("位置情報の取得に失敗: " + error.message);
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 5000,
+            timeout: 20000,
+          }
+        );
+      }
+
+      function startAR() {
+        setStatus("データ読み込み中...");
+        Promise.resolve()
+          .then(requestOrientationPermission)
+          .then(function () {
+            return loadTweets();
+          })
+          .then(function () {
+            setStatus("位置情報を取得しています...");
+            startWatchPosition();
+            startButton.disabled = true;
+            startButton.textContent = "起動中";
+          })
+          .catch(function (error) {
+            setStatus("開始できませんでした: " + error.message);
+          });
+      }
+
+      startButton.addEventListener("click", startAR);
+    })();
+  </script>
+</body>
+</html>
