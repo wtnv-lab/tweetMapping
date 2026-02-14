@@ -77,6 +77,21 @@
       cursor: pointer;
     }
 
+    #diagText {
+      margin: 8px 0 0 0;
+      padding: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(6, 10, 16, 0.55);
+      color: #d8e6f7;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      max-height: 24vh;
+      overflow: auto;
+    }
+
     #bottomPanel {
       bottom: 0;
       padding: 12px;
@@ -113,6 +128,7 @@
     <div id="statusCard">
       <p id="statusText">「開始」を押してカメラ・位置情報を許可してください。</p>
       <button id="startButton" type="button">開始</button>
+      <pre id="diagText">diag: waiting...</pre>
     </div>
   </div>
 
@@ -132,10 +148,11 @@
       const tweetText = document.getElementById("tweetText");
       const arRoot = document.getElementById("arRoot");
       const cameraFeed = document.getElementById("cameraFeed");
+      const diagText = document.getElementById("diagText");
 
       const tweetDataUrl = "data/czml/tweets.json";
-      const maxMarkers = 12;
-      const markerRadiusMeters = 1200;
+      const maxMarkers = 100;
+      const markerRadiusMeters = 10000;
       const rebuildThresholdMeters = 120;
 
       let allTweets = [];
@@ -145,14 +162,81 @@
       let dataLoaded = false;
       let scene = null;
       let cameraStream = null;
+      let watchId = null;
+      let deviceHeading = null;
+      let renderedMarkerCount = 0;
+      let nearbyCandidateCount = 0;
+      let nearestDistanceMeters = null;
 
       function setStatus(message) {
         statusText.textContent = message;
       }
 
+      function toDeg(rad) {
+        return (rad * 180) / Math.PI;
+      }
+
+      function fmtNum(v, digits) {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) {
+          return "-";
+        }
+        return Number(v).toFixed(digits);
+      }
+
+      function updateDiag() {
+        const lines = [];
+        lines.push("mode: live diagnostics");
+        lines.push("camera stream: " + (cameraStream ? "ok" : "none"));
+        lines.push("tweets loaded: " + allTweets.length);
+        lines.push("radius(m): " + markerRadiusMeters + " / maxMarkers: " + maxMarkers);
+        lines.push("nearby: " + nearbyCandidateCount + " / rendered: " + renderedMarkerCount);
+        lines.push("nearest(m): " + (nearestDistanceMeters === null ? "-" : nearestDistanceMeters));
+        lines.push("device heading(deg): " + (deviceHeading === null ? "-" : fmtNum(deviceHeading, 1)));
+
+        if (currentPosition && currentPosition.coords) {
+          const c = currentPosition.coords;
+          lines.push("lat/lon: " + fmtNum(c.latitude, 6) + ", " + fmtNum(c.longitude, 6));
+          lines.push(
+            "accuracy(m): " +
+              fmtNum(c.accuracy, 1) +
+              "  altitude(m): " +
+              fmtNum(c.altitude, 1) +
+              "  altAcc(m): " +
+              fmtNum(c.altitudeAccuracy, 1)
+          );
+          lines.push("speed(m/s): " + fmtNum(c.speed, 2) + "  gps heading(deg): " + fmtNum(c.heading, 1));
+          lines.push("pos timestamp: " + new Date(currentPosition.timestamp).toLocaleTimeString());
+        } else {
+          lines.push("position: waiting...");
+        }
+
+        if (scene) {
+          const cam = scene.querySelector("#arCamera");
+          if (cam && cam.object3D) {
+            const r = cam.object3D.rotation;
+            lines.push(
+              "camera rot deg (x,y,z): " +
+                fmtNum(toDeg(r.x), 1) +
+                ", " +
+                fmtNum(toDeg(r.y), 1) +
+                ", " +
+                fmtNum(toDeg(r.z), 1)
+            );
+          } else {
+            lines.push("camera rot: -");
+          }
+        } else {
+          lines.push("scene: not created");
+        }
+
+        lines.push("screen orientation: " + (screen.orientation ? screen.orientation.type : "-"));
+        diagText.textContent = lines.join("\n");
+      }
+
       function bindSceneEvents(targetScene) {
         targetScene.addEventListener("loaded", function () {
           setStatus("ARシーン起動完了。位置情報を待っています...");
+          updateDiag();
         });
       }
 
@@ -226,6 +310,9 @@
 
         const count = Math.min(maxMarkers, candidates.length);
         const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
+        nearbyCandidateCount = candidates.length;
+        renderedMarkerCount = count;
+        nearestDistanceMeters = nearestDistance;
         for (let i = 0; i < count; i++) {
           const candidate = candidates[i];
           const t = candidate.tweet;
@@ -278,6 +365,7 @@
           nearestText +
           "）";
         setStatus(message);
+        updateDiag();
         lastBuildPosition = {
           latitude: lat,
           longitude: lon,
@@ -351,6 +439,21 @@
         });
       }
 
+      function bindOrientationDiagnostics() {
+        window.addEventListener(
+          "deviceorientation",
+          function (event) {
+            if (typeof event.webkitCompassHeading === "number") {
+              deviceHeading = event.webkitCompassHeading;
+            } else if (event.absolute && typeof event.alpha === "number") {
+              deviceHeading = (360 - event.alpha) % 360;
+            }
+            updateDiag();
+          },
+          true
+        );
+      }
+
       function requestCameraPermission() {
         if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
           return Promise.resolve();
@@ -377,13 +480,15 @@
           setStatus("この端末は位置情報に対応していません。");
           return;
         }
-        navigator.geolocation.watchPosition(
+        watchId = navigator.geolocation.watchPosition(
           function (position) {
             currentPosition = position;
             maybeRebuildMarkers();
+            updateDiag();
           },
           function (error) {
             setStatus("位置情報の取得に失敗: " + error.message);
+            updateDiag();
           },
           {
             enableHighAccuracy: true,
@@ -404,6 +509,7 @@
           .then(function () {
             setStatus("位置情報を取得しています...");
             createScene();
+            bindOrientationDiagnostics();
             startWatchPosition();
             startButton.disabled = true;
             startButton.textContent = "起動中";
@@ -411,10 +517,13 @@
               if (!cameraStream) {
                 setStatus("カメラ映像を取得できません。Safari設定のカメラ許可を確認してください。");
               }
+              updateDiag();
             }, 5000);
+            updateDiag();
           })
           .catch(function (error) {
             setStatus("開始できませんでした: " + error.message);
+            updateDiag();
           });
       }
 
@@ -427,8 +536,14 @@
           tracks[i].stop();
         }
         cameraStream = null;
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
       });
 
+      setInterval(updateDiag, 1000);
+      updateDiag();
       startButton.addEventListener("click", startAR);
     })();
   </script>
