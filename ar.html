@@ -31,6 +31,49 @@
       background: #000;
     }
 
+    #markerLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .screen-marker {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.28em;
+      transform: translate(-50%, -50%);
+      transform-origin: center center;
+      pointer-events: auto;
+      user-select: none;
+      -webkit-user-select: none;
+      white-space: nowrap;
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 0, 0, 0.5);
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .screen-marker.selected {
+      filter: drop-shadow(0 0 10px rgba(80, 170, 255, 0.9));
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+
+    .screen-marker-icon {
+      width: 1em;
+      height: 1em;
+      display: block;
+      flex: 0 0 auto;
+    }
+
+    .screen-marker-label {
+      display: inline-block;
+    }
+
     .overlay {
       position: fixed;
       left: 0;
@@ -77,15 +120,11 @@
       cursor: pointer;
     }
 
-    #bottomPanel {
-      bottom: 0;
-      padding: 12px;
-      display: flex;
-      justify-content: center;
-    }
-
     #tweetCard {
-      width: min(92vw, 440px);
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: min(88vw, 420px);
       min-height: 48px;
       border: 1px solid rgba(255, 255, 255, 0.28);
       border-radius: 12px;
@@ -97,14 +136,15 @@
       pointer-events: auto;
       opacity: 0;
       visibility: hidden;
-      transform: translateY(10px);
-      transition: opacity 240ms ease, transform 240ms ease, visibility 240ms ease;
+      transform: translate(-50%, -8px);
+      transition: opacity 200ms ease, transform 200ms ease, visibility 200ms ease;
+      z-index: 4;
     }
 
     #tweetCard.visible {
       opacity: 1;
       visibility: visible;
-      transform: translateY(0);
+      transform: translate(-50%, 0);
     }
 
     #tweetBody {
@@ -135,15 +175,13 @@
     </div>
   </div>
 
-  <div class="overlay" id="bottomPanel">
-    <div id="tweetCard">
-      <p id="tweetBody">近くのツイートが見つかるとここに本文を表示します。</p>
-      <p id="tweetMeta">ここから -m</p>
-    </div>
-  </div>
-
   <video id="cameraFeed" autoplay playsinline muted></video>
   <div id="arRoot"></div>
+  <div id="markerLayer"></div>
+  <div id="tweetCard">
+    <p id="tweetBody">近くのツイートが見つかるとここに本文を表示します。</p>
+    <p id="tweetMeta">ここから -m</p>
+  </div>
 
   <script>
     (function () {
@@ -154,6 +192,7 @@
       const tweetMeta = document.getElementById("tweetMeta");
       const arRoot = document.getElementById("arRoot");
       const cameraFeed = document.getElementById("cameraFeed");
+      const markerLayer = document.getElementById("markerLayer");
 
       const tweetDataUrl = "data/czml/tweets.json";
       const twitterIconUrl = "data/icon/flags/twitter.png";
@@ -177,15 +216,11 @@
       let nearbyCandidateCount = 0;
       let nearestDistanceMeters = null;
       let selectedMarker = null;
-      const labelTextureCache = new Map();
       let lastBuildAt = 0;
       let buildTimer = null;
-      function yawDegreesFacingUser(x, z) {
-        if (Math.abs(x) < 0.0001 && Math.abs(z) < 0.0001) {
-          return 0;
-        }
-        return (Math.atan2(-x, -z) * 180) / Math.PI;
-      }
+      let markerRenderFrame = null;
+      const projectedPoint = new THREE.Vector3();
+      const cameraSpacePoint = new THREE.Vector3();
 
       function scheduleBuild(forceNow) {
         if (forceNow) {
@@ -233,7 +268,7 @@
           '<a-assets timeout="10000"><img id="twitterIconAsset" src="' +
           twitterIconUrl +
           '" crossorigin="anonymous"></a-assets>' +
-          '<a-entity id="arCamera" camera="fov: 108; near: 0.05; far: 2200" look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .tweet-hit; far: 1000" position="0 1.6 0"></a-entity>' +
+          '<a-entity id="arCamera" camera="fov: 108; near: 0.05; far: 12000" look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .tweet-hit; far: 12000" position="0 1.6 0"></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
         bindSceneEvents(scene);
@@ -266,17 +301,14 @@
       }
 
       function clearMarkers() {
-        if (!scene) {
-          return;
-        }
         clearSelection();
         if (buildTimer !== null) {
           clearTimeout(buildTimer);
           buildTimer = null;
         }
         for (let i = 0; i < markerEntities.length; i++) {
-          const marker = markerEntities[i];
-          if (marker.parentNode) {
+          const marker = markerEntities[i].root;
+          if (marker && marker.parentNode) {
             marker.parentNode.removeChild(marker);
           }
         }
@@ -291,64 +323,19 @@
         return normalized.slice(0, maxLabelChars - 3) + "...";
       }
 
-      function labelTextureDataUrl(labelText, fontPx) {
-        const cacheKey = labelText + "|" + String(fontPx);
-        if (labelTextureCache.has(cacheKey)) {
-          return labelTextureCache.get(cacheKey);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = 2048;
-        canvas.height = 480;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          return { url: "", aspect: 4.0 };
-        }
-        const marginX = 160;
-        const marginY = 100;
-        ctx.font = "bold " + fontPx + "px 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif";
-        const measuredWidth = Math.ceil(ctx.measureText(labelText).width);
-        canvas.width = Math.max(1024, Math.min(4096, measuredWidth + marginX * 2));
-        canvas.height = Math.max(360, Math.min(1200, Math.round(fontPx + marginY * 2)));
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.font = "bold " + fontPx + "px 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.lineJoin = "round";
-        ctx.lineWidth = clamp(fontPx * 0.22, 14, 36);
-        ctx.strokeStyle = "rgba(0,0,0,0.68)";
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        ctx.strokeText(labelText, centerX, centerY);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(labelText, centerX, centerY);
-        const texture = {
-          url: canvas.toDataURL("image/png"),
-          aspect: canvas.width / canvas.height,
-        };
-        labelTextureCache.set(cacheKey, texture);
-        return texture;
-      }
-
       function setMarkerSelected(marker, selected) {
         if (!marker) {
           return;
         }
-        const icon = marker.querySelector(".tweet-icon");
-        const label = marker.querySelector(".tweet-label");
-        const iconBaseOpacity = marker.dataset.iconOpacity || "0.86";
-        const labelBaseOpacity = marker.dataset.labelOpacity || "0.9";
-        if (icon) {
-          icon.setAttribute("opacity", selected ? "1.0" : iconBaseOpacity);
-        }
-        if (label) {
-          label.setAttribute("opacity", selected ? "1.0" : labelBaseOpacity);
-        }
+        const root = marker.root;
+        const iconBaseOpacity = marker.iconBaseOpacity;
+        const labelBaseOpacity = marker.labelBaseOpacity;
+        marker.icon.style.opacity = String(selected ? 1.0 : iconBaseOpacity);
+        marker.label.style.opacity = String(selected ? 1.0 : labelBaseOpacity);
         if (selected) {
-          marker.setAttribute("animation__pulse", "property: scale; dir: alternate; dur: 520; easing: easeInOutSine; loop: true; to: 1.09 1.09 1.09");
+          root.classList.add("selected");
         } else {
-          marker.removeAttribute("animation__pulse");
-          marker.setAttribute("scale", "1 1 1");
+          root.classList.remove("selected");
         }
       }
 
@@ -361,14 +348,7 @@
       }
 
       function isTweetHitTarget(target) {
-        let node = target;
-        while (node && node !== scene) {
-          if (node.classList && node.classList.contains("tweet-hit")) {
-            return true;
-          }
-          node = node.parentElement;
-        }
-        return false;
+        return !!(target && target.closest && target.closest(".screen-marker"));
       }
 
       function selectMarker(marker) {
@@ -380,11 +360,102 @@
         }
         selectedMarker = marker;
         setMarkerSelected(marker, true);
-        const body = marker.dataset.tweetText || "";
-        const dist = marker.dataset.distanceMeters || "-";
+        const body = marker.tweetText || "";
+        const dist = marker.distanceMeters || "-";
         tweetBody.textContent = body;
         tweetMeta.textContent = "ここから " + dist + "m";
+        positionTweetCard(marker);
         tweetCard.classList.add("visible");
+      }
+
+      function positionTweetCard(marker) {
+        if (!marker || !marker.root) {
+          return;
+        }
+        const rect = marker.root.getBoundingClientRect();
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        const cardW = Math.min(viewportW * 0.88, 420);
+        const cardH = 96;
+        const margin = 12;
+        let x = rect.left + rect.width * 0.5;
+        x = clamp(x, cardW * 0.5 + margin, viewportW - cardW * 0.5 - margin);
+        let y = rect.top - margin;
+        if (y - cardH < margin) {
+          y = rect.bottom + margin + cardH;
+        }
+        y = clamp(y, cardH + margin, viewportH - margin);
+        tweetCard.style.left = x.toFixed(1) + "px";
+        tweetCard.style.top = y.toFixed(1) + "px";
+      }
+
+      function projectToScreen(worldPosition, cameraObj, width, height) {
+        cameraSpacePoint.copy(worldPosition).applyMatrix4(cameraObj.matrixWorldInverse);
+        if (cameraSpacePoint.z >= -0.01) {
+          return null;
+        }
+        projectedPoint.copy(worldPosition).project(cameraObj);
+        if (projectedPoint.z < -1 || projectedPoint.z > 1) {
+          return null;
+        }
+        const x = (projectedPoint.x * 0.5 + 0.5) * width;
+        const y = (-projectedPoint.y * 0.5 + 0.5) * height;
+        if (x < -120 || x > width + 120 || y < -120 || y > height + 120) {
+          return null;
+        }
+        return { x: x, y: y };
+      }
+
+      function updateScreenMarkers() {
+        if (!scene || markerEntities.length === 0) {
+          return;
+        }
+        const camEntity = scene.querySelector("#arCamera");
+        if (!camEntity) {
+          return;
+        }
+        const cameraObj = camEntity.getObject3D("camera");
+        if (!cameraObj) {
+          return;
+        }
+        cameraObj.updateMatrixWorld(true);
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        for (let i = 0; i < markerEntities.length; i++) {
+          const marker = markerEntities[i];
+          const screenPos = projectToScreen(marker.worldPosition, cameraObj, width, height);
+          if (!screenPos) {
+            marker.root.style.display = "none";
+            continue;
+          }
+          const nearToFarY = height * (0.04 + marker.distanceNorm * 0.56);
+          const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
+          const yScatter = (marker.laneOffset * 24 + marker.clusterOffset * 44) * (0.6 + marker.distanceNorm * 1.2);
+          const finalX = screenPos.x * 0.5 + (width * 0.5) * 0.5 + xScatter;
+          const finalY = clamp(screenPos.y * 0.08 + nearToFarY * 0.92 + yScatter, height * 0.02, height * 0.62);
+          marker.root.style.display = "inline-flex";
+          marker.root.style.left = finalX.toFixed(1) + "px";
+          marker.root.style.top = finalY.toFixed(1) + "px";
+          marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
+        }
+        if (selectedMarker && selectedMarker.root) {
+          if (selectedMarker.root.style.display === "none") {
+            clearSelection();
+          } else {
+            positionTweetCard(selectedMarker);
+          }
+        }
+      }
+
+      function startMarkerRenderLoop() {
+        if (markerRenderFrame !== null) {
+          return;
+        }
+        const tick = function () {
+          markerRenderFrame = requestAnimationFrame(tick);
+          updateScreenMarkers();
+        };
+        markerRenderFrame = requestAnimationFrame(tick);
       }
 
       function buildMarkers() {
@@ -416,6 +487,8 @@
 
         const count = Math.min(maxMarkers, candidates.length);
         const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
+        const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
+        const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
         const headingNow = deviceHeading === null ? 0 : deviceHeading;
         const laneStepDeg = 2.8;
         const clusterStepDeg = 8.0;
@@ -446,82 +519,77 @@
           const bearing = bearingDegrees(lat, lon, t.lat, t.lon);
           const relativeDeg = ((bearing - headingNow + 540) % 360) - 180;
           const relativeRad = (relativeDeg * Math.PI) / 180;
-          // Compress depth harder so vertical placement is visible on screen.
-          const projected = clamp(distance * 0.032, 6, 30);
+          const projected = distance;
           const x = Math.sin(relativeRad) * projected;
           const z = -Math.cos(relativeRad) * projected;
           const ratio = clamp(distance / markerRadiusMeters, 0, 1);
+          const distanceNorm = clamp((distance - (nearestDistance !== null ? nearestDistance : distance)) / distanceSpan, 0, 1);
           const laneKey = String(Math.round(relativeDeg / laneStepDeg));
           const laneIndex = laneSlots.get(laneKey) || 0;
           laneSlots.set(laneKey, laneIndex + 1);
           const clusterKey = String(Math.round(relativeDeg / clusterStepDeg));
           const clusterIndex = clusterSlots.get(clusterKey) || 0;
           clusterSlots.set(clusterKey, clusterIndex + 1);
-          // Distance-driven vertical band: map near->top and far->bottom over the full viewport range.
-          const topBandY = 78.0;
-          const bottomBandY = -168.0;
-          const distanceCurve = Math.pow(ratio, 0.86);
-          const baseY = topBandY + (bottomBandY - topBandY) * distanceCurve - 7.8;
-          const spreadStep = clamp(7.5 - ratio * 1.35, 5.4, 7.5);
+          // Keep vertical offsets small; distance is represented by true depth.
+          const baseY = 1.8;
+          const spreadStep = 0.45;
           const laneOffset = directedOffsetUnits(laneIndex, ratio);
           const clusterOffset = directedOffsetUnits(clusterIndex, ratio);
-          const densityBoost = 1 + Math.min(3.2, clusterIndex * 0.34 + laneIndex * 0.2);
+          const densityBoost = 1 + Math.min(2.0, clusterIndex * 0.2 + laneIndex * 0.1);
           const combinedOffset = laneOffset + clusterOffset * 1.8;
-          const directionalBias = ratio <= 0.45 ? clusterIndex * 2.26 : ratio >= 0.7 ? -clusterIndex * 4.36 : 0;
-          const verticalScreenShiftY = -20.0;
-          const markerY = clamp(baseY + (combinedOffset + directionalBias) * spreadStep * densityBoost + verticalScreenShiftY, -246.0, 36.0);
-          const iconSize = clamp(2.7 - ratio * 1.2, 1.5, 2.7);
+          const markerY = clamp(baseY + combinedOffset * spreadStep * densityBoost, 0.6, 7.5);
+          const iconSize = clamp(86 - distanceNorm * 74, 12, 86);
           const label = toLabel(t.text);
-          const baseLabelFontPx = (90 + ratio * 140) * 1.5;
-          const distanceFontScale = 1 - ratio;
-          const labelFontPx = Math.round(baseLabelFontPx * distanceFontScale);
-          const labelTexture = labelTextureDataUrl(label, labelFontPx);
-          const labelHeight = clamp(3.4 + ratio * 2.6, 3.4, 6.0);
-          const labelWidth = clamp(labelHeight * labelTexture.aspect, 4.8, 64.0);
-          const iconOpacity = clamp(0.92 - ratio * 0.64, 0.28, 0.92);
-          const labelOpacity = clamp(0.98 - ratio * 0.7, 0.24, 0.98);
+          const labelFontPx = Math.round(clamp(44 - distanceNorm * 34, 10, 44));
+          const iconOpacity = clamp(0.98 - distanceNorm * 0.62, 0.36, 0.98);
+          const labelOpacity = clamp(0.99 - distanceNorm * 0.68, 0.31, 0.99);
+          const worldPosition = new THREE.Vector3(x, markerY, z);
 
-          const root = document.createElement("a-entity");
-          root.setAttribute("position", x.toFixed(2) + " " + markerY.toFixed(2) + " " + z.toFixed(2));
-          root.setAttribute("rotation", "0 " + yawDegreesFacingUser(x, z).toFixed(2) + " 0");
-          root.setAttribute("class", "tweet-hit");
+          const root = document.createElement("div");
+          root.className = "screen-marker tweet-hit";
+          root.style.fontSize = labelFontPx.toFixed(1) + "px";
 
-          const icon = document.createElement("a-image");
-          icon.setAttribute("class", "tweet-icon tweet-hit");
-          icon.setAttribute("src", "#twitterIconAsset");
-          icon.setAttribute("width", iconSize.toFixed(2));
-          icon.setAttribute("height", iconSize.toFixed(2));
-          icon.setAttribute("material", "transparent: true; side: double; alphaTest: 0.2; shader: flat;");
-          icon.setAttribute("position", "0 0 0");
-          icon.setAttribute("opacity", iconOpacity.toFixed(2));
+          const icon = document.createElement("img");
+          icon.className = "screen-marker-icon tweet-hit";
+          icon.src = twitterIconUrl;
+          icon.alt = "";
+          icon.style.width = iconSize.toFixed(1) + "px";
+          icon.style.height = iconSize.toFixed(1) + "px";
+          icon.style.opacity = iconOpacity.toFixed(2);
           root.appendChild(icon);
 
-          const labelImage = document.createElement("a-image");
-          labelImage.setAttribute("class", "tweet-label tweet-hit");
-          labelImage.setAttribute("src", labelTexture.url);
-          labelImage.setAttribute("width", labelWidth.toFixed(2));
-          labelImage.setAttribute("height", labelHeight.toFixed(2));
-          labelImage.setAttribute("material", "transparent: true; side: double; alphaTest: 0.02; shader: flat;");
-          labelImage.setAttribute("position", "0 " + (iconSize * 0.8 + 1.75).toFixed(2) + " 0.02");
-          labelImage.setAttribute("opacity", labelOpacity.toFixed(2));
-          root.appendChild(labelImage);
-          root.dataset.iconOpacity = iconOpacity.toFixed(2);
-          root.dataset.labelOpacity = labelOpacity.toFixed(2);
-          root.dataset.tweetText = t.text;
-          root.dataset.distanceMeters = String(Math.round(distance));
+          const labelSpan = document.createElement("span");
+          labelSpan.className = "screen-marker-label tweet-hit";
+          labelSpan.textContent = label;
+          labelSpan.style.opacity = labelOpacity.toFixed(2);
+          root.appendChild(labelSpan);
+
           const onSelect = function () {
-            selectMarker(root);
+            selectMarker(marker);
           };
           root.addEventListener("click", onSelect);
           root.addEventListener("touchstart", onSelect, { passive: true });
           icon.addEventListener("click", onSelect);
-          icon.addEventListener("touchstart", onSelect, { passive: true });
-          labelImage.addEventListener("click", onSelect);
-          labelImage.addEventListener("touchstart", onSelect, { passive: true });
+          labelSpan.addEventListener("click", onSelect);
+          markerLayer.appendChild(root);
 
-          markerEntities.push(root);
-          scene.appendChild(root);
+          const marker = {
+            root: root,
+            icon: icon,
+            label: labelSpan,
+            worldPosition: worldPosition,
+            ratio: ratio,
+            distanceNorm: distanceNorm,
+            laneOffset: laneOffset,
+            clusterOffset: clusterOffset,
+            iconBaseOpacity: iconOpacity,
+            labelBaseOpacity: labelOpacity,
+            tweetText: t.text,
+            distanceMeters: String(Math.round(distance)),
+          };
+          markerEntities.push(marker);
         }
+        updateScreenMarkers();
         const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
         const message =
           "近傍 " +
@@ -685,6 +753,7 @@
             createScene();
             bindOrientationDiagnostics();
             startLocationPolling();
+            startMarkerRenderLoop();
             startButton.textContent = "起動中";
             setTimeout(function () {
               if (!cameraStream) {
@@ -707,6 +776,10 @@
         if (locationPollTimer !== null) {
           clearInterval(locationPollTimer);
           locationPollTimer = null;
+        }
+        if (markerRenderFrame !== null) {
+          cancelAnimationFrame(markerRenderFrame);
+          markerRenderFrame = null;
         }
         if (!cameraStream) {
           return;
