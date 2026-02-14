@@ -488,7 +488,8 @@
             continue;
           }
           const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
-          const yScatter = (marker.laneOffset * 17.5 + marker.clusterOffset * 30) * (0.4375 + marker.distanceNorm * 0.6875);
+          const rawYScatter = (marker.laneOffset * 17.5 + marker.clusterOffset * 30) * (0.4375 + marker.distanceNorm * 0.6875);
+          const yScatter = rawYScatter < 0 ? rawYScatter * 1.25 : rawYScatter;
           const distanceYOffset = (marker.distanceNorm - 0.5) * height * 0.56;
           const targetX = screenPos.x * 0.85 + (width * 0.5) * 0.15 + xScatter;
           const tiltPivotY = height * 0.35;
