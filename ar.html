@@ -21,6 +21,16 @@
       z-index: 1;
     }
 
+    #cameraFeed {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      background: #000;
+    }
+
     .overlay {
       position: fixed;
       left: 0;
@@ -112,6 +122,7 @@
     </div>
   </div>
 
+  <video id="cameraFeed" autoplay playsinline muted></video>
   <div id="arRoot"></div>
 
   <script>
@@ -120,6 +131,7 @@
       const startButton = document.getElementById("startButton");
       const tweetText = document.getElementById("tweetText");
       const arRoot = document.getElementById("arRoot");
+      const cameraFeed = document.getElementById("cameraFeed");
 
       const tweetDataUrl = "data/czml/tweets.json";
       const maxMarkers = 36;
@@ -132,25 +144,21 @@
       let markerEntities = [];
       let dataLoaded = false;
       let scene = null;
+      let cameraStream = null;
 
       function setStatus(message) {
         statusText.textContent = message;
       }
 
       function bindSceneEvents(targetScene) {
-        targetScene.addEventListener("camera-init", function () {
-          setStatus("カメラ起動完了。位置情報を待っています...");
-        });
-
-        targetScene.addEventListener("camera-error", function (event) {
-          const detail = (event && event.detail && event.detail.message) || "camera-error";
-          setStatus("カメラ起動に失敗しました: " + detail);
+        targetScene.addEventListener("loaded", function () {
+          setStatus("ARシーン起動完了。位置情報を待っています...");
         });
       }
 
       function createScene() {
         arRoot.innerHTML =
-          '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;" arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;">' +
+          '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
           '<a-entity id="arCamera" camera gps-camera="minDistance: 5;"></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
@@ -339,10 +347,11 @@
             audio: false,
           })
           .then(function (stream) {
-            const tracks = stream.getTracks ? stream.getTracks() : [];
-            for (let i = 0; i < tracks.length; i++) {
-              tracks[i].stop();
-            }
+            cameraStream = stream;
+            cameraFeed.srcObject = stream;
+            return cameraFeed.play().catch(function () {
+              return Promise.resolve();
+            });
           });
       }
 
@@ -381,11 +390,27 @@
             startWatchPosition();
             startButton.disabled = true;
             startButton.textContent = "起動中";
+            setTimeout(function () {
+              if (!cameraStream) {
+                setStatus("カメラ映像を取得できません。Safari設定のカメラ許可を確認してください。");
+              }
+            }, 5000);
           })
           .catch(function (error) {
             setStatus("開始できませんでした: " + error.message);
           });
       }
+
+      window.addEventListener("pagehide", function () {
+        if (!cameraStream) {
+          return;
+        }
+        const tracks = cameraStream.getTracks ? cameraStream.getTracks() : [];
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].stop();
+        }
+        cameraStream = null;
+      });
 
       startButton.addEventListener("click", startAR);
     })();
