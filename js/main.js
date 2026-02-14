@@ -32,6 +32,12 @@
 
   let viewer;
   let photogrammetryTilesetPromise = null;
+  let photogrammetryTileset = null;
+  let tweetDisplayToneEnabled = false;
+  let baseImageryLayer = null;
+
+  const baseBrightnessDefault = 1.0;
+  const baseBrightnessTweetDisplay = 0.5;
 
   const tweetTileIndexUrl = "data/czml/tweet-tiles/index.json";
   const tweetSearchIndexUrl = "data/czml/tweet-tiles/search.json";
@@ -112,9 +118,9 @@
       useBrowserRecommendedResolution: true,
     });
 
-    const baseLayer = viewer.imageryLayers.get(0);
-    if (baseLayer) {
-      baseLayer.brightness = 0.5;
+    baseImageryLayer = viewer.imageryLayers.get(0);
+    if (baseImageryLayer) {
+      baseImageryLayer.brightness = baseBrightnessDefault;
     }
 
     viewer.camera.frustum.fov = Cesium.Math.toRadians(80);
@@ -130,6 +136,19 @@
     // Start photogrammetry loading as early as possible to reduce zoom-in lag.
     loadPhotogrammetry();
     openingSequence();
+  }
+
+  function applyTweetDisplayTone() {
+    tweetDisplayToneEnabled = true;
+    if (baseImageryLayer) {
+      baseImageryLayer.brightness = baseBrightnessTweetDisplay;
+    }
+    if (photogrammetryTileset) {
+      photogrammetryTileset.style = new Cesium.Cesium3DTileStyle({
+        color: "rgba(110, 110, 110, 1)",
+      });
+    }
+    viewer.scene.requestRender();
   }
 
   function openingSequence() {
@@ -204,12 +223,13 @@
             cullWithChildrenBounds: true,
           })
         );
-        tileset.style = new Cesium.Cesium3DTileStyle({
-          color: "rgba(110, 110, 110, 1)",
-        });
+        photogrammetryTileset = tileset;
         tileset.dynamicScreenSpaceError = true;
         tileset.dynamicScreenSpaceErrorFactor = 1.5;
         tileset.dynamicScreenSpaceErrorDensity = 0.0012;
+        if (tweetDisplayToneEnabled) {
+          applyTweetDisplayTone();
+        }
         viewer.scene.requestRender();
         return tileset;
       } catch (error) {
@@ -563,6 +583,7 @@
   }
 
   function finishLoading() {
+    applyTweetDisplayTone();
     setTimeout(function () {
       fadeInOut(blackOutDiv, 0);
       fadeInOut(loadingDiv, 0);
