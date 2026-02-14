@@ -431,11 +431,19 @@
           const nearToFarY = height * (0.04 + marker.distanceNorm * 0.56);
           const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
           const yScatter = (marker.laneOffset * 24 + marker.clusterOffset * 44) * (0.6 + marker.distanceNorm * 1.2);
-          const finalX = screenPos.x * 0.5 + (width * 0.5) * 0.5 + xScatter;
-          const finalY = clamp(screenPos.y * 0.08 + nearToFarY * 0.92 + yScatter, height * 0.02, height * 0.62);
+          const targetX = screenPos.x * 0.85 + (width * 0.5) * 0.15 + xScatter;
+          const targetY = clamp(screenPos.y * 0.62 + nearToFarY * 0.38 + yScatter, height * 0.02, height * 0.62);
+          if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
+            marker.screenX = targetX;
+            marker.screenY = targetY;
+          } else {
+            // Smooth sensor jitter while preserving follow responsiveness.
+            marker.screenX += (targetX - marker.screenX) * 0.22;
+            marker.screenY += (targetY - marker.screenY) * 0.22;
+          }
           marker.root.style.display = "inline-flex";
-          marker.root.style.left = finalX.toFixed(1) + "px";
-          marker.root.style.top = finalY.toFixed(1) + "px";
+          marker.root.style.left = marker.screenX.toFixed(1) + "px";
+          marker.root.style.top = marker.screenY.toFixed(1) + "px";
           marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
         }
         if (selectedMarker && selectedMarker.root) {
@@ -582,6 +590,8 @@
             distanceNorm: distanceNorm,
             laneOffset: laneOffset,
             clusterOffset: clusterOffset,
+            screenX: null,
+            screenY: null,
             iconBaseOpacity: iconOpacity,
             labelBaseOpacity: labelOpacity,
             tweetText: t.text,
