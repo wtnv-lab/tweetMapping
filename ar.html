@@ -134,8 +134,8 @@
       const cameraFeed = document.getElementById("cameraFeed");
 
       const tweetDataUrl = "data/czml/tweets.json";
-      const maxMarkers = 36;
-      const markerRadiusMeters = 3000;
+      const maxMarkers = 12;
+      const markerRadiusMeters = 1200;
       const rebuildThresholdMeters = 120;
 
       let allTweets = [];
@@ -233,36 +233,26 @@
           const root = document.createElement("a-entity");
           root.setAttribute("gps-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
 
-          // Tall beacon for long-distance visibility.
-          const beacon = document.createElement("a-cylinder");
-          beacon.setAttribute("height", "40");
-          beacon.setAttribute("radius", "2.4");
-          beacon.setAttribute("color", "#2da7ff");
-          beacon.setAttribute("opacity", "0.42");
-          beacon.setAttribute("material", "transparent: true; side: double;");
-          beacon.setAttribute("position", "0 20 0");
-          root.appendChild(beacon);
-
-          const top = document.createElement("a-sphere");
-          top.setAttribute("radius", "4");
-          top.setAttribute("color", "#7fd1ff");
-          top.setAttribute("position", "0 41 0");
-          top.setAttribute("material", "side: double;");
-          root.appendChild(top);
+          const pin = document.createElement("a-sphere");
+          pin.setAttribute("radius", "0.9");
+          pin.setAttribute("color", "#2da7ff");
+          pin.setAttribute("material", "side: double;");
+          pin.setAttribute("position", "0 3.2 0");
+          root.appendChild(pin);
 
           const panel = document.createElement("a-plane");
-          panel.setAttribute("height", "6");
-          panel.setAttribute("width", "18");
+          panel.setAttribute("height", "2.2");
+          panel.setAttribute("width", "7.4");
           panel.setAttribute("color", "#14181e");
-          panel.setAttribute("opacity", "0.78");
+          panel.setAttribute("opacity", "0.88");
           panel.setAttribute("material", "transparent: true; side: double;");
-          panel.setAttribute("position", "0 50 0");
+          panel.setAttribute("position", "0 5.4 0");
 
           const text = document.createElement("a-text");
           text.setAttribute("value", toLabel(t.text));
           text.setAttribute("align", "center");
           text.setAttribute("color", "#f3f6fa");
-          text.setAttribute("width", "36");
+          text.setAttribute("width", "14");
           text.setAttribute("position", "0 0 0.02");
           panel.appendChild(text);
 
