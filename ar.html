@@ -160,6 +160,7 @@
       const maxMarkers = 100;
       const markerRadiusMeters = 10000;
       const rebuildThresholdMeters = 30;
+      const locationPollIntervalMs = 5000;
       const headingRebuildThresholdDeg = 9;
       const minBuildIntervalMs = 1200;
 
@@ -170,7 +171,7 @@
       let dataLoaded = false;
       let scene = null;
       let cameraStream = null;
-      let watchId = null;
+      let locationPollTimer = null;
       let deviceHeading = null;
       let lastHeadingForBuild = null;
       let renderedMarkerCount = 0;
@@ -696,25 +697,31 @@
           });
       }
 
-      function startWatchPosition() {
+      function startLocationPolling() {
         if (!navigator.geolocation) {
           setStatus("この端末は位置情報に対応していません。");
           return;
         }
-        watchId = navigator.geolocation.watchPosition(
-          function (position) {
-            currentPosition = position;
-            maybeRebuildMarkers();
-          },
-          function (error) {
-            setStatus("位置情報の取得に失敗: " + error.message);
-          },
-          {
-            enableHighAccuracy: false,
-            maximumAge: 15000,
-            timeout: 30000,
-          }
-        );
+
+        const pollPosition = function () {
+          navigator.geolocation.getCurrentPosition(
+            function (position) {
+              currentPosition = position;
+              maybeRebuildMarkers();
+            },
+            function (error) {
+              setStatus("位置情報の取得に失敗: " + error.message);
+            },
+            {
+              enableHighAccuracy: false,
+              maximumAge: locationPollIntervalMs,
+              timeout: 30000,
+            }
+          );
+        };
+
+        pollPosition();
+        locationPollTimer = setInterval(pollPosition, locationPollIntervalMs);
       }
 
       function startAR() {
@@ -729,7 +736,7 @@
             setStatus("位置情報を取得しています...");
             createScene();
             bindOrientationDiagnostics();
-            startWatchPosition();
+            startLocationPolling();
             startButton.textContent = "起動中";
             startBillboardLoop();
             setTimeout(function () {
@@ -754,9 +761,9 @@
           cancelAnimationFrame(billboardAnimationFrame);
           billboardAnimationFrame = null;
         }
-        if (watchId !== null) {
-          navigator.geolocation.clearWatch(watchId);
-          watchId = null;
+        if (locationPollTimer !== null) {
+          clearInterval(locationPollTimer);
+          locationPollTimer = null;
         }
         if (!cameraStream) {
           return;
