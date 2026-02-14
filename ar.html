@@ -159,7 +159,7 @@
       function createScene() {
         arRoot.innerHTML =
           '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
-          '<a-entity id="arCamera" camera gps-camera="minDistance: 5;"></a-entity>' +
+          '<a-entity id="arCamera" camera gps-camera="minDistance: 5;" rotation-reader></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
         bindSceneEvents(scene);
@@ -225,6 +225,7 @@
         clearMarkers();
 
         const count = Math.min(maxMarkers, candidates.length);
+        const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
         for (let i = 0; i < count; i++) {
           const candidate = candidates[i];
           const t = candidate.tweet;
@@ -232,19 +233,36 @@
           const root = document.createElement("a-entity");
           root.setAttribute("gps-entity-place", "latitude: " + t.lat + "; longitude: " + t.lon + ";");
 
+          // Tall beacon for long-distance visibility.
+          const beacon = document.createElement("a-cylinder");
+          beacon.setAttribute("height", "40");
+          beacon.setAttribute("radius", "2.4");
+          beacon.setAttribute("color", "#2da7ff");
+          beacon.setAttribute("opacity", "0.42");
+          beacon.setAttribute("material", "transparent: true; side: double;");
+          beacon.setAttribute("position", "0 20 0");
+          root.appendChild(beacon);
+
+          const top = document.createElement("a-sphere");
+          top.setAttribute("radius", "4");
+          top.setAttribute("color", "#7fd1ff");
+          top.setAttribute("position", "0 41 0");
+          top.setAttribute("material", "side: double;");
+          root.appendChild(top);
+
           const panel = document.createElement("a-plane");
-          panel.setAttribute("height", "1.1");
-          panel.setAttribute("width", "3.3");
+          panel.setAttribute("height", "6");
+          panel.setAttribute("width", "18");
           panel.setAttribute("color", "#14181e");
           panel.setAttribute("opacity", "0.78");
-          panel.setAttribute("material", "transparent: true;");
-          panel.setAttribute("position", "0 1.6 0");
+          panel.setAttribute("material", "transparent: true; side: double;");
+          panel.setAttribute("position", "0 50 0");
 
           const text = document.createElement("a-text");
           text.setAttribute("value", toLabel(t.text));
           text.setAttribute("align", "center");
           text.setAttribute("color", "#f3f6fa");
-          text.setAttribute("width", "7");
+          text.setAttribute("width", "36");
           text.setAttribute("position", "0 0 0.02");
           panel.appendChild(text);
 
@@ -258,8 +276,17 @@
           scene.appendChild(root);
         }
 
+        const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
         const message =
-          "近傍 " + candidates.length + " 件（表示 " + count + " 件, 半径 " + Math.round(markerRadiusMeters / 1000) + "km）";
+          "近傍 " +
+          candidates.length +
+          " 件（表示 " +
+          count +
+          " 件, 半径 " +
+          Math.round(markerRadiusMeters / 1000) +
+          "km" +
+          nearestText +
+          "）";
         setStatus(message);
         lastBuildPosition = {
           latitude: lat,
