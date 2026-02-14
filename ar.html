@@ -715,9 +715,9 @@
 
       function startAR() {
         setStatus("データ読み込み中...");
-        Promise.resolve()
-          .then(requestCameraPermission)
-          .then(requestOrientationPermission)
+        startButton.disabled = true;
+        const orientationPermissionPromise = requestOrientationPermission();
+        Promise.all([orientationPermissionPromise, requestCameraPermission()])
           .then(function () {
             return loadTweets();
           })
@@ -726,7 +726,6 @@
             createScene();
             bindOrientationDiagnostics();
             startWatchPosition();
-            startButton.disabled = true;
             startButton.textContent = "起動中";
             if (billboardTimer === null) {
               billboardTimer = setInterval(function () {
@@ -741,6 +740,8 @@
           })
           .catch(function (error) {
             setStatus("開始できませんでした: " + error.message);
+            startButton.disabled = false;
+            startButton.textContent = "開始";
           });
       }
 
