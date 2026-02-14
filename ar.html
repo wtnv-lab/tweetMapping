@@ -162,7 +162,6 @@
       const rebuildThresholdMeters = 30;
       const headingRebuildThresholdDeg = 9;
       const minBuildIntervalMs = 1200;
-      const billboardIntervalMs = 300;
 
       let allTweets = [];
       let currentPosition = null;
@@ -181,16 +180,11 @@
       const labelTextureCache = new Map();
       let lastBuildAt = 0;
       let buildTimer = null;
-      let lastBillboardAt = 0;
-      let billboardTimer = null;
+      let billboardAnimationFrame = null;
       const billboardTarget = new THREE.Vector3();
 
-      function updateBillboards(force) {
+      function updateBillboards() {
         if (!scene || markerEntities.length === 0) {
-          return;
-        }
-        const now = Date.now();
-        if (!force && now - lastBillboardAt < billboardIntervalMs) {
           return;
         }
         const cam = scene.querySelector("#arCamera");
@@ -204,7 +198,17 @@
             marker.object3D.lookAt(billboardTarget);
           }
         }
-        lastBillboardAt = now;
+      }
+
+      function startBillboardLoop() {
+        if (billboardAnimationFrame !== null) {
+          return;
+        }
+        const tick = function () {
+          billboardAnimationFrame = requestAnimationFrame(tick);
+          updateBillboards();
+        };
+        billboardAnimationFrame = requestAnimationFrame(tick);
       }
 
       function scheduleBuild(forceNow) {
@@ -562,7 +566,7 @@
           markerEntities.push(root);
           scene.appendChild(root);
         }
-        updateBillboards(true);
+        updateBillboards();
 
         const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
         const message =
@@ -727,11 +731,7 @@
             bindOrientationDiagnostics();
             startWatchPosition();
             startButton.textContent = "起動中";
-            if (billboardTimer === null) {
-              billboardTimer = setInterval(function () {
-                updateBillboards(false);
-              }, billboardIntervalMs);
-            }
+            startBillboardLoop();
             setTimeout(function () {
               if (!cameraStream) {
                 setStatus("カメラ映像を取得できません。Safari設定のカメラ許可を確認してください。");
@@ -750,9 +750,9 @@
           clearTimeout(buildTimer);
           buildTimer = null;
         }
-        if (billboardTimer !== null) {
-          clearInterval(billboardTimer);
-          billboardTimer = null;
+        if (billboardAnimationFrame !== null) {
+          cancelAnimationFrame(billboardAnimationFrame);
+          billboardAnimationFrame = null;
         }
         if (watchId !== null) {
           navigator.geolocation.clearWatch(watchId);
