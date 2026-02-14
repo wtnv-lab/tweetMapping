@@ -19,6 +19,8 @@
       position: fixed;
       inset: 0;
       z-index: 1;
+      opacity: 0;
+      transition: opacity 220ms ease;
     }
 
     .overlay {
@@ -142,6 +144,22 @@
       function setStatus(message) {
         statusText.textContent = message;
       }
+
+      scene.addEventListener("camera-init", function () {
+        scene.style.opacity = "1";
+        setStatus("カメラ起動完了。位置情報を待っています...");
+      });
+
+      scene.addEventListener("camera-error", function (event) {
+        const detail = (event && event.detail && event.detail.message) || "camera-error";
+        setStatus("カメラ起動に失敗しました: " + detail);
+      });
+
+      scene.addEventListener("gps-camera-update-position", function () {
+        if (scene.style.opacity !== "1") {
+          scene.style.opacity = "1";
+        }
+      });
 
       function haversineMeters(lat1, lon1, lat2, lon2) {
         const toRad = Math.PI / 180.0;
@@ -309,6 +327,26 @@
         });
       }
 
+      function requestCameraPermission() {
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+          return Promise.resolve();
+        }
+
+        return navigator.mediaDevices
+          .getUserMedia({
+            video: {
+              facingMode: { ideal: "environment" },
+            },
+            audio: false,
+          })
+          .then(function (stream) {
+            const tracks = stream.getTracks ? stream.getTracks() : [];
+            for (let i = 0; i < tracks.length; i++) {
+              tracks[i].stop();
+            }
+          });
+      }
+
       function startWatchPosition() {
         if (!navigator.geolocation) {
           setStatus("この端末は位置情報に対応していません。");
@@ -333,6 +371,7 @@
       function startAR() {
         setStatus("データ読み込み中...");
         Promise.resolve()
+          .then(requestCameraPermission)
           .then(requestOrientationPermission)
           .then(function () {
             return loadTweets();
@@ -342,6 +381,12 @@
             startWatchPosition();
             startButton.disabled = true;
             startButton.textContent = "起動中";
+            // If camera-init is not fired, show an actionable hint.
+            setTimeout(function () {
+              if (scene.style.opacity !== "1") {
+                setStatus("カメラ映像を取得できません。HTTPS接続とカメラ権限を確認してください。");
+              }
+            }, 8000);
           })
           .catch(function (error) {
             setStatus("開始できませんでした: " + error.message);
