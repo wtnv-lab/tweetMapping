@@ -164,6 +164,7 @@
       let cameraStream = null;
       let watchId = null;
       let deviceHeading = null;
+      let lastHeadingForBuild = null;
       let renderedMarkerCount = 0;
       let nearbyCandidateCount = 0;
       let nearestDistanceMeters = null;
@@ -243,7 +244,7 @@
       function createScene() {
         arRoot.innerHTML =
           '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
-          '<a-entity id="arCamera" camera position="0 1.6 0"></a-entity>' +
+          '<a-entity id="arCamera" camera look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" position="0 1.6 0"></a-entity>' +
           "</a-scene>";
         scene = document.getElementById("arScene");
         bindSceneEvents(scene);
@@ -273,6 +274,11 @@
 
       function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
+      }
+
+      function angularDiffDeg(a, b) {
+        const d = Math.abs(((a - b + 540) % 360) - 180);
+        return d;
       }
 
       function clearMarkers() {
@@ -324,16 +330,17 @@
 
         const count = Math.min(maxMarkers, candidates.length);
         const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
+        const headingNow = deviceHeading === null ? 0 : deviceHeading;
         nearbyCandidateCount = candidates.length;
         renderedMarkerCount = count;
         nearestDistanceMeters = nearestDistance;
+        lastHeadingForBuild = headingNow;
         for (let i = 0; i < count; i++) {
           const candidate = candidates[i];
           const t = candidate.tweet;
           const distance = candidate.distance;
           const bearing = bearingDegrees(lat, lon, t.lat, t.lon);
-          const heading = deviceHeading === null ? 0 : deviceHeading;
-          const relativeDeg = ((bearing - heading + 540) % 360) - 180;
+          const relativeDeg = ((bearing - headingNow + 540) % 360) - 180;
           const relativeRad = (relativeDeg * Math.PI) / 180;
           // Compress far distances so 10km scope still stays visible in camera space.
           const projected = clamp(distance * 0.35, 20, 260);
@@ -472,6 +479,14 @@
               deviceHeading = event.webkitCompassHeading;
             } else if (event.absolute && typeof event.alpha === "number") {
               deviceHeading = (360 - event.alpha) % 360;
+            }
+            if (
+              deviceHeading !== null &&
+              currentPosition &&
+              dataLoaded &&
+              (lastHeadingForBuild === null || angularDiffDeg(deviceHeading, lastHeadingForBuild) >= 2)
+            ) {
+              buildMarkers();
             }
             updateDiag();
           },
