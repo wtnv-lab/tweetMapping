@@ -492,7 +492,8 @@
           const distanceYOffset = (marker.distanceNorm - 0.5) * height * 0.56;
           const targetX = screenPos.x * 0.85 + (width * 0.5) * 0.15 + xScatter;
           const tiltPivotY = height * 0.35;
-          const tiltReducedY = tiltPivotY + (screenPos.y - tiltPivotY) * 0.25;
+          // Invert tilt response: look up -> move markers down, look down -> move markers up.
+          const tiltReducedY = tiltPivotY - (screenPos.y - tiltPivotY) * 0.25;
           const limitedTiltY = clamp(tiltReducedY, tiltPivotY - height * 0.06, tiltPivotY + height * 0.06);
           const targetY = clamp(limitedTiltY + distanceYOffset + yScatter, height * -0.04, height * 0.7);
           if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
