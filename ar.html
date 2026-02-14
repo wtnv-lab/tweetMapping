@@ -489,9 +489,9 @@
           }
           const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
           const rawYScatter = (marker.laneOffset * 17.5 + marker.clusterOffset * 30) * (0.4375 + marker.distanceNorm * 0.6875);
-          const yScatter = rawYScatter < 0 ? rawYScatter * 1.25 : rawYScatter;
+          const yScatter = rawYScatter < 0 ? rawYScatter * 1.6 : rawYScatter;
           const distanceYOffset = (marker.distanceNorm - 0.5) * height * 0.56;
-          const targetX = screenPos.x * 0.85 + (width * 0.5) * 0.15 + xScatter;
+          const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
           const tiltPivotY = height * 0.35;
           const tiltReducedY = tiltPivotY + (screenPos.y - tiltPivotY) * 0.52;
           const limitedTiltY = clamp(tiltReducedY, tiltPivotY - height * 0.14, tiltPivotY + height * 0.14);
@@ -500,8 +500,8 @@
             marker.screenX = targetX;
             marker.screenY = targetY;
           } else {
-            // Smooth sensor jitter while preserving follow responsiveness.
-            marker.screenX += (targetX - marker.screenX) * 0.22;
+            // Keep Y smoothing for stability but make X more responsive to panning.
+            marker.screenX += (targetX - marker.screenX) * 0.42;
             marker.screenY += (targetY - marker.screenY) * 0.22;
           }
           if (
