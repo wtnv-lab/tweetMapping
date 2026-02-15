@@ -9,9 +9,6 @@
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
-  const compassTrack = document.getElementById("compassTrack");
-  const compassMarks = Array.prototype.slice.call(document.querySelectorAll(".compassMark"));
-  const compassHeading = document.getElementById("compassHeading");
 
   const tweetDataUrl = "data/czml/tweets.json";
   const twitterIconUrl = "data/icon/flags/twitter.png";
@@ -94,54 +91,6 @@
 
   function setLaunchStatus(message) {
     launchStatus.textContent = message;
-  }
-
-  function normalizeDeltaDeg(deg) {
-    let delta = ((deg + 540) % 360) - 180;
-    if (delta < -180) {
-      delta += 360;
-    }
-    return delta;
-  }
-
-  function updateCompassDebug() {
-    if (!compassTrack || compassMarks.length === 0 || !compassHeading) {
-      return;
-    }
-    if (deviceHeading === null || !Number.isFinite(deviceHeading)) {
-      compassHeading.textContent = "Heading --";
-      for (let i = 0; i < compassMarks.length; i++) {
-        compassMarks[i].classList.remove("active");
-      }
-      return;
-    }
-    const heading = (deviceHeading + 360) % 360;
-    const trackWidth = compassTrack.clientWidth || 1;
-    const centerX = trackWidth * 0.5;
-    const pxPerDeg = trackWidth / 220;
-    let activeMark = null;
-    let minAbsDelta = Infinity;
-    for (let i = 0; i < compassMarks.length; i++) {
-      const mark = compassMarks[i];
-      const markDeg = Number(mark.getAttribute("data-deg"));
-      if (!Number.isFinite(markDeg)) {
-        continue;
-      }
-      const delta = normalizeDeltaDeg(markDeg - heading);
-      const x = centerX + delta * pxPerDeg;
-      mark.style.left = x.toFixed(1) + "px";
-      mark.style.display = x < -24 || x > trackWidth + 24 ? "none" : "block";
-      const absDelta = Math.abs(delta);
-      if (absDelta < minAbsDelta) {
-        minAbsDelta = absDelta;
-        activeMark = mark;
-      }
-      mark.classList.remove("active");
-    }
-    if (activeMark) {
-      activeMark.classList.add("active");
-    }
-    compassHeading.textContent = "Heading " + Math.round(heading) + "°";
   }
 
   function hideLaunchPanel() {
@@ -657,7 +606,6 @@
         } else if (event.absolute && typeof event.alpha === "number") {
           deviceHeading = (360 - event.alpha) % 360;
         }
-        updateCompassDebug();
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
         }
@@ -780,7 +728,5 @@
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");
     startButton.disabled = true;
   }
-  updateCompassDebug();
-  window.addEventListener("resize", updateCompassDebug);
   startButton.addEventListener("click", startAR);
 })();
