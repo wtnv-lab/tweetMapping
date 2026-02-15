@@ -186,27 +186,26 @@
 
     #statusStrip {
       top: calc(8px + env(safe-area-inset-top));
-      left: 50%;
+      left: 8px;
       right: auto;
-      width: min(70vw, 320px);
-      height: 32px;
+      width: min(78vw, 360px);
+      min-height: 32px;
       padding: 0;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: flex-start;
-      transform: translateX(-50%);
     }
 
     #statusText {
       margin: 0;
       font-size: 10px;
-      line-height: 1.2;
+      line-height: 1.35;
       color: orange;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
       text-align: left;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: pre-line;
+      overflow: visible;
+      text-overflow: clip;
       max-width: 100%;
     }
 
@@ -324,6 +323,7 @@
       const locationPollIntervalMs = 5000;
       const minBuildIntervalMs = 1200;
       const maxLabelChars = 26;
+      const arFieldYOffsetPx = -20;
       const ua = navigator.userAgent || "";
       const isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
       const isTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
@@ -374,7 +374,17 @@
       }
 
       function setStatus(message) {
-        statusText.textContent = message;
+        if (!currentPosition || !currentPosition.coords) {
+          statusText.textContent = message;
+          return;
+        }
+        const lat = Number(currentPosition.coords.latitude);
+        const lon = Number(currentPosition.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          statusText.textContent = message;
+          return;
+        }
+        statusText.textContent = message + "\n現在地: " + lat.toFixed(5) + ", " + lon.toFixed(5);
       }
 
       function setLaunchStatus(message) {
@@ -568,13 +578,13 @@
           }
           const xScatter = (marker.laneOffset * 34 + marker.clusterOffset * 56) * (0.8 + marker.distanceNorm * 1.2);
           const rawYScatter = (marker.laneOffset * 17.5 + marker.clusterOffset * 30) * (0.4375 + marker.distanceNorm * 0.6875);
-          const yScatter = rawYScatter < 0 ? rawYScatter * 1.6 : rawYScatter;
+          const yScatter = rawYScatter < 0 ? rawYScatter * 2.76 : rawYScatter * 0.82;
           const distanceYOffset = (marker.distanceNorm - 0.5) * height * 0.56;
           const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
           const tiltPivotY = height * 0.35;
           const tiltReducedY = tiltPivotY + (screenPos.y - tiltPivotY) * 0.52;
           const limitedTiltY = clamp(tiltReducedY, tiltPivotY - height * 0.14, tiltPivotY + height * 0.14);
-          const targetY = clamp(limitedTiltY + distanceYOffset + yScatter, height * -0.04, height * 0.7);
+          const targetY = clamp(limitedTiltY + distanceYOffset + yScatter + arFieldYOffsetPx, height * -0.12, height * 0.7);
           if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
             marker.screenX = targetX;
             marker.screenY = targetY;
