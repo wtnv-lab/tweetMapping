@@ -21,6 +21,16 @@
   <div class="overlay" id="statusStrip">
     <p id="statusText">待機中</p>
   </div>
+  <div class="overlay" id="compassDebug" aria-label="方位デバッグ">
+    <div id="compassTrack">
+      <span class="compassMark" data-deg="270">W</span>
+      <span class="compassMark" data-deg="0">N</span>
+      <span class="compassMark" data-deg="90">E</span>
+      <span class="compassMark" data-deg="180">S</span>
+      <span id="compassCenterTick"></span>
+    </div>
+    <p id="compassHeading">Heading --</p>
+  </div>
   <a id="buttonMap" href="index.html" aria-label="地図版へ戻る">MAP</a>
 
   <video id="cameraFeed" autoplay playsinline muted></video>

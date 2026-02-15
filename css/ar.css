@@ -204,6 +204,57 @@ html, body {
   max-width: 100%;
 }
 
+#compassDebug {
+  top: calc(44px + env(safe-area-inset-top));
+  left: 50%;
+  width: min(72vw, 340px);
+  transform: translateX(-50%);
+}
+
+#compassTrack {
+  position: relative;
+  height: 22px;
+  border: 0.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.compassMark {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  color: rgba(243, 246, 250, 0.85);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  opacity: 0.65;
+}
+
+.compassMark.active {
+  color: #ffffff;
+  opacity: 1;
+}
+
+#compassCenterTick {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: rgba(255, 205, 90, 0.95);
+}
+
+#compassHeading {
+  margin: 2px 0 0 0;
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
 #tweetCard {
   position: fixed;
   left: 0;
