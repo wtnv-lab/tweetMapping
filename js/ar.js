@@ -18,7 +18,6 @@
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
   const maxMarkers = numberSetting(displaySettings.maxMarkers, 100);
-  const markerRadiusMeters = numberSetting(displaySettings.markerRadiusMeters, 10000);
   const rebuildThresholdMeters = numberSetting(displaySettings.rebuildThresholdMeters, 30);
   const minBuildIntervalMs = numberSetting(displaySettings.minBuildIntervalMs, 1200);
   const maxLabelChars = numberSetting(displaySettings.maxLabelChars, 26);
@@ -287,10 +286,11 @@
           marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
         (numberSetting(displaySettings.yScatterBaseFactor, 0.4375) +
           marker.distanceNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
+      const yScatterMagnitude = Math.abs(rawYScatter);
       const yScatter =
-        rawYScatter < 0
-          ? rawYScatter * numberSetting(displaySettings.yScatterUpMultiplier, 2.76)
-          : rawYScatter * numberSetting(displaySettings.yScatterDownMultiplier, 0.82);
+        marker.distanceNorm <= 0.5
+          ? -yScatterMagnitude * numberSetting(displaySettings.yScatterUpMultiplier, 2.76)
+          : yScatterMagnitude * numberSetting(displaySettings.yScatterDownMultiplier, 0.82);
       const distanceYOffset =
         (marker.distanceNorm - 0.5) * height * numberSetting(displaySettings.distanceYOffsetFactor, 0.56);
       const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
@@ -358,15 +358,36 @@
     const lat = currentPosition.coords.latitude;
     const lon = currentPosition.coords.longitude;
     const candidates = [];
+    let farthestSelectedDistance = 0;
 
     for (let i = 0; i < allTweets.length; i++) {
       const t = allTweets[i];
       const distance = haversineMeters(lat, lon, t.lat, t.lon);
-      if (distance <= markerRadiusMeters) {
-        candidates.push({
-          tweet: t,
-          distance: distance,
-        });
+      const entry = {
+        tweet: t,
+        distance: distance,
+      };
+      if (candidates.length < maxMarkers) {
+        candidates.push(entry);
+        if (distance > farthestSelectedDistance) {
+          farthestSelectedDistance = distance;
+        }
+      } else if (distance < farthestSelectedDistance) {
+        let farthestIndex = 0;
+        let farthestDistance = candidates[0].distance;
+        for (let j = 1; j < candidates.length; j++) {
+          if (candidates[j].distance > farthestDistance) {
+            farthestDistance = candidates[j].distance;
+            farthestIndex = j;
+          }
+        }
+        candidates[farthestIndex] = entry;
+        farthestSelectedDistance = candidates[0].distance;
+        for (let j = 1; j < candidates.length; j++) {
+          if (candidates[j].distance > farthestSelectedDistance) {
+            farthestSelectedDistance = candidates[j].distance;
+          }
+        }
       }
     }
 
@@ -376,10 +397,11 @@
 
     clearMarkers();
 
-    const count = Math.min(maxMarkers, candidates.length);
+    const count = candidates.length;
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
+    const selectedRangeMeters = Math.max(1, farthestDistance !== null ? farthestDistance : 1);
     const headingNow = deviceHeading === null ? 0 : deviceHeading;
     const laneSlots = new Map();
     const clusterSlots = new Map();
@@ -398,7 +420,7 @@
       const sign = indexInGroup % 2 === 1 ? 1 : -1;
       return level * sign;
     }
-    nearbyCandidateCount = candidates.length;
+    nearbyCandidateCount = allTweets.length;
     renderedMarkerCount = count;
     nearestDistanceMeters = nearestDistance;
     for (let i = 0; i < count; i++) {
@@ -411,7 +433,7 @@
       const projected = distance;
       const x = Math.sin(relativeRad) * projected;
       const z = -Math.cos(relativeRad) * projected;
-      const ratio = clamp(distance / markerRadiusMeters, 0, 1);
+      const ratio = clamp(distance / selectedRangeMeters, 0, 1);
       const distanceNorm = clamp((distance - (nearestDistance !== null ? nearestDistance : distance)) / distanceSpan, 0, 1);
       const laneKey = String(Math.round(relativeDeg / laneStepDeg));
       const laneIndex = laneSlots.get(laneKey) || 0;
@@ -445,10 +467,14 @@
         numberSetting(displaySettings.iconSizeMax, 86)
       );
       const label = toLabel(t.text);
+      const labelFontNorm = Math.pow(
+        distanceNorm,
+        numberSetting(displaySettings.labelFontCurveExponent, 1.35)
+      );
       const labelFontPx = Math.round(
         clamp(
           numberSetting(displaySettings.labelFontMax, 44) -
-            distanceNorm * numberSetting(displaySettings.labelFontDistanceFactor, 34),
+            labelFontNorm * numberSetting(displaySettings.labelFontDistanceFactor, 34),
           numberSetting(displaySettings.labelFontMin, 10),
           numberSetting(displaySettings.labelFontMax, 44)
         )
@@ -516,10 +542,10 @@
     updateScreenMarkers();
     const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
     const message =
-      "近傍 " +
-      candidates.length +
-      " 件（表示 " +
+      "表示 " +
       count +
+      " 件（総数 " +
+      allTweets.length +
       " 件" +
       nearestText +
       "）";

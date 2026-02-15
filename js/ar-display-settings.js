@@ -1,6 +1,5 @@
 window.AR_DISPLAY_SETTINGS = {
   maxMarkers: 100,
-  markerRadiusMeters: 10000,
   rebuildThresholdMeters: 30,
   minBuildIntervalMs: 1200,
   maxLabelChars: 26,
@@ -38,15 +37,16 @@ window.AR_DISPLAY_SETTINGS = {
   iconSizeMax: 86,
   iconSizeMin: 12,
   iconSizeDistanceFactor: 74,
-  labelFontMax: 44,
+  labelFontMax: 31,
   labelFontMin: 10,
   labelFontDistanceFactor: 34,
+  labelFontCurveExponent: 1.35,
   iconOpacityStart: 0.98,
   iconOpacityDistanceFactor: 0.62,
   iconOpacityMin: 0.36,
   iconOpacityMax: 0.98,
   labelOpacityStart: 0.99,
-  labelOpacityDistanceFactor: 0.68,
-  labelOpacityMin: 0.31,
+  labelOpacityDistanceFactor: 0.34,
+  labelOpacityMin: 0.65,
   labelOpacityMax: 0.99
 };
