@@ -1,0 +1,272 @@
+:root {
+  --ui-fg: #f3f6fa;
+  --ui-border: rgba(255, 255, 255, 0.28);
+  --ui-bg: rgba(20, 24, 30, 0.62);
+  --ui-bg-strong: rgba(20, 24, 30, 0.74);
+  --ui-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  --ui-outline: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: "MS Pゴシック", sans-serif;
+  background: #000;
+  color: var(--ui-fg);
+}
+
+#arScene {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+#cameraFeed {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  background: #000;
+}
+
+#markerLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.screen-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 0, 0, 0.5);
+  line-height: 1;
+  font-weight: 700;
+}
+
+.screen-marker.selected {
+  filter: drop-shadow(0 0 10px rgba(80, 170, 255, 0.9));
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.screen-marker-icon {
+  width: 1em;
+  height: 1em;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.screen-marker-label {
+  display: inline-block;
+}
+
+.overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+#centerPanel {
+  inset: 0;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#centerPanel.hidden {
+  display: none;
+}
+
+#launchCard {
+  width: min(88vw, 420px);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(10, 12, 16, 0.52), rgba(8, 10, 14, 0.42));
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.28),
+    0 0 44px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 12px 12px 12px 12px;
+  pointer-events: auto;
+  text-align: center;
+}
+
+#launchTitle {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--ui-fg);
+}
+
+#launchStatus {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+  color: orange;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+#launchLoading {
+  display: none;
+  width: 54px;
+  height: 54px;
+  margin: 2px auto 10px auto;
+  object-fit: contain;
+}
+
+#centerPanel.is-loading #launchLoading {
+  display: block;
+}
+
+#centerPanel.is-loading #startButton {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+#startButton {
+  margin-top: 10px;
+  border: 1px solid rgba(174, 221, 255, 0.95);
+  border-radius: 10px;
+  background: linear-gradient(165deg, rgba(92, 180, 250, 0.95), rgba(38, 118, 186, 0.92));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(180, 228, 255, 0.2) inset;
+  color: var(--ui-fg);
+  height: 38px;
+  min-width: 120px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateY(0);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+#startButton:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+#startButton:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(180, 228, 255, 0.2) inset;
+}
+
+#statusStrip {
+  top: calc(8px + env(safe-area-inset-top));
+  left: 8px;
+  right: auto;
+  width: min(78vw, 360px);
+  min-height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+#statusText {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  text-align: left;
+  white-space: pre-line;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 100%;
+}
+
+#tweetCard {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: min(88vw, 420px);
+  min-height: 48px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 10px 12px;
+  outline: var(--ui-outline);
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -8px);
+  transition: opacity 200ms ease, transform 200ms ease, visibility 200ms ease;
+  z-index: 4;
+}
+
+#tweetCard.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+#tweetBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ui-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#tweetMeta {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ui-fg);
+  opacity: 0.9;
+}
+
+#buttonMap {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  right: 8px;
+  z-index: 5;
+  opacity: 0.9;
+  pointer-events: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-bg);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-fg);
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 32px;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}

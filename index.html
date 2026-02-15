@@ -86,10 +86,8 @@
 			var ua = navigator.userAgent || "";
 			var isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
 			var isTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
-			var coarse = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-			var touch = (navigator.maxTouchPoints || 0) > 0;
 			var canUseAR = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && navigator.geolocation);
-			var isMobileOrTablet = isPhone || isTablet || (touch && coarse);
+			var isMobileOrTablet = isPhone || isTablet;
 			if (!isMobileOrTablet || !canUseAR) {
 				return;
 			}
