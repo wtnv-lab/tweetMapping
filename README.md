@@ -8,15 +8,9 @@
 - ソースコードはコメントを参考に改修の上，自由にお使いください。
 - お問い合わせは hwtnv(at)iii.u-tokyo.ac.jp まで
 
-## データ最適化
+## ARアプリ
 
-`data/czml/tweets.json` から、表示用の地理タイル（`data/czml/tweet-tiles/`）を生成できます。
-
-```bash
-node tools/build-tweet-tiles.js
-```
-
-生成物:
-- `data/czml/tweet-tiles/index.json`: タイル一覧と件数
-- `data/czml/tweet-tiles/search.json`: 検索用インデックス（id/text）
-- `data/czml/tweet-tiles/tiles/*.json`: 地理タイルごとのツイート本体
+スマートフォン向けに，近傍のツイートをAR表示するページを提供しています。
+- [https://tweet.mapping.jp/ar.html](https://tweet.mapping.jp/ar.html)
+- iOS / Android の対応ブラウザで，カメラと位置情報の許可が必要です。
+- 地図版（`index.html`）から `AR` ボタンでも遷移できます。
