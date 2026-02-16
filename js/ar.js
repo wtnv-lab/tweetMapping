@@ -171,7 +171,9 @@
 
   function bindSceneEvents(targetScene) {
     targetScene.addEventListener("loaded", function () {
-      setStatus("ARシーン起動完了。位置情報を待っています...");
+      if (!currentPosition) {
+        setStatus("ARシーン起動完了。位置情報を待っています...");
+      }
     });
     const onBackgroundTap = function (event) {
       if (!isTweetHitTarget(event.target)) {
@@ -745,6 +747,9 @@
         function (position) {
           currentPosition = position;
           markPermissionGrantedNow();
+          if (!lastBuildPosition) {
+            setStatus("現在地を取得しました。ツイートを表示しています...");
+          }
           maybeRebuildMarkers();
         },
         function (error) {
