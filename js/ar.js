@@ -13,6 +13,8 @@
   const tweetDataUrl = "data/czml/tweets.json";
   const twitterIconUrl = "data/icon/flags/twitter.png";
   const locationPollIntervalMs = 5000;
+  const permissionCacheKey = "tweetMappingArPermissionGrantedAt";
+  const permissionCacheWindowMs = 30 * 24 * 60 * 60 * 1000;
   const displaySettings = window.AR_DISPLAY_SETTINGS || {};
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -48,8 +50,79 @@
   let lastBuildAt = 0;
   let buildTimer = null;
   let markerRenderFrame = null;
+  let arStarting = false;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
+
+  function readPermissionGrantedAt() {
+    try {
+      const raw = window.localStorage ? window.localStorage.getItem(permissionCacheKey) : null;
+      const ts = Number(raw);
+      return Number.isFinite(ts) ? ts : 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  function markPermissionGrantedNow() {
+    try {
+      if (!window.localStorage) {
+        return;
+      }
+      window.localStorage.setItem(permissionCacheKey, String(Date.now()));
+    } catch (error) {
+      // Ignore storage errors (private mode or restricted context).
+    }
+  }
+
+  function isPermissionCacheFresh() {
+    const grantedAt = readPermissionGrantedAt();
+    if (!grantedAt) {
+      return false;
+    }
+    return Date.now() - grantedAt <= permissionCacheWindowMs;
+  }
+
+  function queryPermissionState(name) {
+    if (!navigator.permissions || typeof navigator.permissions.query !== "function") {
+      return Promise.resolve("unknown");
+    }
+    try {
+      return navigator.permissions
+        .query({ name: name })
+        .then(function (result) {
+          return result && result.state ? result.state : "unknown";
+        })
+        .catch(function () {
+          return "unknown";
+        });
+    } catch (error) {
+      return Promise.resolve("unknown");
+    }
+  }
+
+  function getPermissionSnapshot() {
+    return Promise.all([
+      queryPermissionState("geolocation"),
+      queryPermissionState("camera"),
+    ]).then(function (states) {
+      return {
+        geolocation: states[0],
+        camera: states[1],
+      };
+    });
+  }
+
+  function shouldAutoStartFromPermissions(snapshot) {
+    const geoState = snapshot && snapshot.geolocation ? snapshot.geolocation : "unknown";
+    const camState = snapshot && snapshot.camera ? snapshot.camera : "unknown";
+    const hasDenied = geoState === "denied" || camState === "denied";
+    if (hasDenied) {
+      return false;
+    }
+    const bothGranted = geoState === "granted" && camState === "granted";
+    return bothGranted || isPermissionCacheFresh();
+  }
 
   function scheduleBuild(forceNow) {
     if (forceNow) {
@@ -671,6 +744,7 @@
       navigator.geolocation.getCurrentPosition(
         function (position) {
           currentPosition = position;
+          markPermissionGrantedNow();
           maybeRebuildMarkers();
         },
         function (error) {
@@ -688,11 +762,17 @@
     locationPollTimer = setInterval(pollPosition, locationPollIntervalMs);
   }
 
-  function startAR() {
+  function startAR(options) {
+    const opts = options || {};
+    const autoStart = !!opts.autoStart;
+    if (arStarting) {
+      return;
+    }
     if (!isMobileOrTablet) {
       setLaunchStatus("AR版はスマートフォン・タブレット専用です。地図版をご利用ください。");
       return;
     }
+    arStarting = true;
     centerPanel.classList.add("is-loading");
     setLaunchStatus("データを読み込み中...");
     startButton.disabled = true;
@@ -700,6 +780,7 @@
     const orientationPermissionPromise = requestOrientationPermission();
     Promise.all([orientationPermissionPromise, requestCameraPermission()])
       .then(function () {
+        markPermissionGrantedNow();
         setLaunchStatus("ツイートデータを読み込んでいます...");
         return loadTweets();
       })
@@ -719,8 +800,13 @@
         }, 5000);
       })
       .catch(function (error) {
+        arStarting = false;
         centerPanel.classList.remove("is-loading");
-        setLaunchStatus("開始できませんでした: " + error.message);
+        if (autoStart) {
+          setLaunchStatus("自動開始できませんでした。開始ボタンを押してください。(" + error.message + ")");
+        } else {
+          setLaunchStatus("開始できませんでした: " + error.message);
+        }
         startButton.disabled = false;
         startButton.textContent = "開始";
         startButton.style.display = "inline-flex";
@@ -753,6 +839,24 @@
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");
     startButton.disabled = true;
+  } else {
+    setLaunchStatus("カメラ・位置情報の権限状態を確認しています...");
+    getPermissionSnapshot().then(function (snapshot) {
+      if (!shouldAutoStartFromPermissions(snapshot)) {
+        const geoState = snapshot.geolocation || "unknown";
+        const camState = snapshot.camera || "unknown";
+        if (geoState === "denied" || camState === "denied") {
+          setLaunchStatus("ブラウザ設定でカメラ・位置情報の許可を有効にしてください。");
+        } else {
+          setLaunchStatus("カメラ・位置情報を許可してください");
+        }
+        return;
+      }
+      setLaunchStatus("前回の許可設定を利用して自動開始しています...");
+      startAR({ autoStart: true });
+    });
   }
-  startButton.addEventListener("click", startAR);
+  startButton.addEventListener("click", function () {
+    startAR({ autoStart: false });
+  });
 })();
