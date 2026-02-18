@@ -264,6 +264,15 @@
     return Math.min(max, Math.max(min, value));
   }
 
+  function toPerspectiveNorm(verticalNorm) {
+    const t = clamp(verticalNorm, 0, 1);
+    const perspectiveStrength = Math.max(0, numberSetting(displaySettings.rankPerspectiveStrength, 2.5));
+    if (perspectiveStrength <= 0) {
+      return t;
+    }
+    return Math.log(1 + perspectiveStrength * t) / Math.log(1 + perspectiveStrength);
+  }
+
   function clearMarkers() {
     clearSelection();
     if (buildTimer !== null) {
@@ -389,6 +398,8 @@
     const height = window.innerHeight;
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i];
+      const verticalNorm =
+        typeof marker.verticalNorm === "number" ? marker.verticalNorm : marker.distanceNorm;
       const screenPos = projectToScreen(marker.worldPosition, cameraObj, width, height);
       if (!screenPos) {
         marker.root.style.display = "none";
@@ -403,27 +414,19 @@
         (marker.laneOffset * numberSetting(displaySettings.yScatterLaneWeight, 17.5) +
           marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
         (numberSetting(displaySettings.yScatterBaseFactor, 0.4375) +
-          marker.distanceNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
-      const yScatterMagnitude = Math.abs(rawYScatter);
-      const yScatter =
-        marker.distanceNorm <= 0.5
-          ? -yScatterMagnitude * numberSetting(displaySettings.yScatterUpMultiplier, 2.76)
-          : yScatterMagnitude * numberSetting(displaySettings.yScatterDownMultiplier, 0.82);
-      const distanceYOffset =
-        (marker.distanceNorm - 0.5) * height * numberSetting(displaySettings.distanceYOffsetFactor, 0.56);
+          verticalNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
       const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
-      const tiltPivotY = height * numberSetting(displaySettings.tiltPivotRatio, 0.35);
-      const tiltReducedY =
-        tiltPivotY + (screenPos.y - tiltPivotY) * numberSetting(displaySettings.tiltReduceFactor, 0.52);
-      const limitedTiltY = clamp(
-        tiltReducedY,
-        tiltPivotY - height * numberSetting(displaySettings.tiltClampUpRatio, 0.14),
-        tiltPivotY + height * numberSetting(displaySettings.tiltClampDownRatio, 0.14)
-      );
+      const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
+      const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
+      const perspectiveNorm = toPerspectiveNorm(verticalNorm);
+      const yLinearBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
+      const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
+      const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const targetY = clamp(
-        limitedTiltY + distanceYOffset + yScatter + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
-        height * numberSetting(displaySettings.targetYMinRatio, -0.12),
-        height * numberSetting(displaySettings.targetYMaxRatio, 0.7)
+        yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
+        height * topRatio,
+        height * bottomRatio
       );
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
@@ -478,10 +481,19 @@
     const centers = [];
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
-      if (!marker || typeof marker.distanceNorm !== "number") {
+      if (!marker) {
         continue;
       }
-      const distanceBandCenter = targetYMaxRatio - distanceBandSpan * (1 - marker.distanceNorm);
+      const verticalNorm =
+        typeof marker.verticalNorm === "number"
+          ? marker.verticalNorm
+          : typeof marker.distanceNorm === "number"
+            ? marker.distanceNorm
+            : null;
+      if (verticalNorm === null) {
+        continue;
+      }
+      const distanceBandCenter = targetYMaxRatio - distanceBandSpan * (1 - verticalNorm);
       centers.push(distanceBandCenter);
     }
     if (centers.length === 0) {
@@ -549,19 +561,18 @@
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
-    const selectedRangeMeters = Math.max(1, farthestDistance !== null ? farthestDistance : 1);
     const headingNow = deviceHeading === null ? 0 : deviceHeading;
     const laneSlots = new Map();
     const clusterSlots = new Map();
-    function directedOffsetUnits(indexInGroup, ratio) {
+    function directedOffsetUnits(indexInGroup, verticalNorm) {
       if (indexInGroup === 0) {
         return 0;
       }
-      // Near tweets: spread upward only. Far tweets: spread downward only.
-      if (ratio <= 0.45) {
+      // 直近100件内の順位（分位）で上下方向を決める。
+      if (verticalNorm <= 0.45) {
         return indexInGroup;
       }
-      if (ratio >= 0.7) {
+      if (verticalNorm >= 0.7) {
         return -indexInGroup;
       }
       const level = Math.floor((indexInGroup + 1) / 2);
@@ -581,7 +592,7 @@
       const projected = distance;
       const x = Math.sin(relativeRad) * projected;
       const z = -Math.cos(relativeRad) * projected;
-      const ratio = clamp(distance / selectedRangeMeters, 0, 1);
+      const verticalNorm = count <= 1 ? 0 : i / (count - 1);
       const distanceNorm = clamp((distance - (nearestDistance !== null ? nearestDistance : distance)) / distanceSpan, 0, 1);
       const laneKey = String(Math.round(relativeDeg / laneStepDeg));
       const laneIndex = laneSlots.get(laneKey) || 0;
@@ -592,8 +603,8 @@
       // Keep vertical offsets small; distance is represented by true depth.
       const baseY = numberSetting(displaySettings.markerBaseY, 1.8);
       const spreadStep = numberSetting(displaySettings.markerSpreadStep, 0.45);
-      const laneOffset = directedOffsetUnits(laneIndex, ratio);
-      const clusterOffset = directedOffsetUnits(clusterIndex, ratio);
+      const laneOffset = directedOffsetUnits(laneIndex, verticalNorm);
+      const clusterOffset = directedOffsetUnits(clusterIndex, verticalNorm);
       const densityBoost =
         1 +
         Math.min(
@@ -615,10 +626,7 @@
         numberSetting(displaySettings.iconSizeMax, 86)
       );
       const label = toLabel(t.text);
-      const labelFontNorm = Math.pow(
-        distanceNorm,
-        numberSetting(displaySettings.labelFontCurveExponent, 1.35)
-      );
+      const labelFontNorm = verticalNorm;
       const labelFontPx = Math.round(
         clamp(
           numberSetting(displaySettings.labelFontMax, 44) -
@@ -627,15 +635,16 @@
           numberSetting(displaySettings.labelFontMax, 44)
         )
       );
+      const opacityNorm = toPerspectiveNorm(verticalNorm);
       const iconOpacity = clamp(
         numberSetting(displaySettings.iconOpacityStart, 0.98) -
-          distanceNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
+          opacityNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
         numberSetting(displaySettings.iconOpacityMin, 0.36),
         numberSetting(displaySettings.iconOpacityMax, 0.98)
       );
       const labelOpacity = clamp(
         numberSetting(displaySettings.labelOpacityStart, 0.99) -
-          distanceNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
+          opacityNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
         numberSetting(displaySettings.labelOpacityMin, 0.31),
         numberSetting(displaySettings.labelOpacityMax, 0.99)
       );
@@ -674,7 +683,8 @@
         icon: icon,
         label: labelSpan,
         worldPosition: worldPosition,
-        ratio: ratio,
+        ratio: verticalNorm,
+        verticalNorm: verticalNorm,
         distanceNorm: distanceNorm,
         laneOffset: laneOffset,
         clusterOffset: clusterOffset,

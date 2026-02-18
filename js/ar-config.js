@@ -24,10 +24,10 @@ window.AR_CONFIG = {
     showToggle: true,
 
     // DEBUGスイッチON時に使う固定座標
-    // 東京タワー: 緯度 35.65858, 経度 139.745433
+    // 仙台市役所付近: 緯度 38.268721, 経度 140.869407
     testLocation: {
-      lat: 35.65858,
-      lon: 139.745433,
+      lat: 38.268721,
+      lon: 140.869407,
     },
   },
 
@@ -44,7 +44,7 @@ window.AR_CONFIG = {
     rebuildThresholdMeters: 30,
     minBuildIntervalMs: 1200,
     maxLabelChars: 26,
-    arFieldYOffsetPx: 20,
+    arFieldYOffsetPx: 0,
     offscreenMargin: 48,
     laneStepDeg: 2.8,
     clusterStepDeg: 8.0,
@@ -58,7 +58,7 @@ window.AR_CONFIG = {
     yScatterDistanceFactor: 0.6875,
     yScatterUpMultiplier: 2.76,
     yScatterDownMultiplier: 0.82,
-    distanceYOffsetFactor: 0.56,
+    distanceYOffsetFactor: 0.32,
     tiltPivotRatio: 0.35,
     tiltReduceFactor: 0.52,
     tiltClampUpRatio: 0.14,
@@ -66,10 +66,14 @@ window.AR_CONFIG = {
     targetYMinRatio: -0.12,
     targetYMaxRatio: 0.7,
     verticalSpreadScale: 0.5,
-    autoAlignEnabled: 1,
+    autoAlignEnabled: 0,
     autoAlignTargetRatio: 0.49,
     autoAlignMaxShiftRatio: 0.14,
     autoAlignLerp: 0.35,
+    rankTopRatio: 0.1,
+    rankBottomRatio: 0.7,
+    rankPerspectiveStrength: 3.0,
+    rankScatterRatio: 0.02,
     screenXSmooth: 0.42,
     screenYSmooth: 0.22,
     markerBaseY: 1.8,
@@ -86,7 +90,6 @@ window.AR_CONFIG = {
     labelFontMax: 31,
     labelFontMin: 10,
     labelFontDistanceFactor: 34,
-    labelFontCurveExponent: 1.35,
     iconOpacityStart: 0.98,
     iconOpacityDistanceFactor: 0.62,
     iconOpacityMin: 0.36,
