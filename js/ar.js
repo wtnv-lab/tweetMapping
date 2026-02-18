@@ -1,5 +1,6 @@
 (function () {
   const statusText = document.getElementById("statusText");
+  const statusTelemetry = document.getElementById("statusTelemetry");
   const centerPanel = document.getElementById("centerPanel");
   const launchStatus = document.getElementById("launchStatus");
   const startButton = document.getElementById("startButton");
@@ -61,7 +62,6 @@
   let locationPollTimer = null;
   let deviceHeading = null;
   let devicePitchDeg = null;
-  let lastTiltLogAt = 0;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
@@ -182,6 +182,15 @@
       return;
     }
     statusText.textContent = message + "\n現在地: " + lat.toFixed(5) + ", " + lon.toFixed(5);
+  }
+
+  function updateTelemetry() {
+    if (!statusTelemetry) {
+      return;
+    }
+    const headingText = typeof deviceHeading === "number" ? deviceHeading.toFixed(0) + "°" : "--°";
+    const pitchText = typeof devicePitchDeg === "number" ? devicePitchDeg.toFixed(1) + "°" : "--°";
+    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText;
   }
 
   function setLaunchStatus(message) {
@@ -447,29 +456,29 @@
       const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
       const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
-      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 45));
-      const tiltOffsetDeg = numberSetting(displaySettings.tiltPitchOffsetDeg, 0);
+      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 90));
+      const tiltCenterDeg = numberSetting(displaySettings.tiltPitchCenterDeg, 90);
       const tiltInvert = !!displaySettings.tiltInvert;
-      const tiltBase = Number.isFinite(cameraPitchDeg)
-        ? cameraPitchDeg
-        : typeof devicePitchDeg === "number"
-          ? devicePitchDeg
+      const tiltBase = typeof devicePitchDeg === "number"
+        ? devicePitchDeg
+        : Number.isFinite(cameraPitchDeg)
+          ? cameraPitchDeg
           : 0;
-      const tiltRaw = tiltBase - tiltOffsetDeg;
-      const tiltNorm = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
-      const tiltMagnitude = Math.abs(tiltNorm);
-      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * tiltNorm;
+      const tiltRaw = tiltBase - tiltCenterDeg;
+      const tiltSigned = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
+      const tiltMagnitude = Math.abs(tiltSigned);
+      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * -tiltSigned;
       const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
       const yBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
-      const anchorBase = tiltNorm >= 0 ? height * topRatio : height * bottomRatio;
+      const anchorBase = tiltSigned <= 0 ? height * topRatio : height * bottomRatio;
       const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
       const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const baseSpan = height * (bottomRatio - topRatio);
       const extraSpan = baseSpan * (tiltSpread - 1);
-      const clampMin = tiltNorm >= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
-      const clampMax = tiltNorm >= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
+      const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
+      const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
       const targetY = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         clampMin,
@@ -497,6 +506,7 @@
       marker.root.style.top = marker.screenY.toFixed(1) + "px";
       marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
     }
+    updateTelemetry();
     if (selectedMarker && selectedMarker.root) {
       if (selectedMarker.root.style.display === "none") {
         clearSelection();
@@ -843,24 +853,6 @@
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
           devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
-        }
-        if (debugConfig.logTilt) {
-          const now = Date.now();
-          if (now - lastTiltLogAt > 200) {
-            lastTiltLogAt = now;
-            console.log("[tilt]", {
-              alpha: event.alpha,
-              beta: event.beta,
-              gamma: event.gamma,
-              absolute: event.absolute,
-              screenAngle:
-                (window.screen && window.screen.orientation && window.screen.orientation.angle) ||
-                window.orientation ||
-                0,
-              pitchDeg: pitchDeg,
-              pitchSmoothed: devicePitchDeg
-            });
-          }
         }
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
