@@ -157,6 +157,7 @@
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
+  let farthestDistanceMeters = null;
   let visibleMarkerCount = 0;
   let markerStatusCacheKey = "";
   let selectedMarker = null;
@@ -611,22 +612,12 @@
     if (!currentPosition || renderedMarkerCount <= 0) {
       return;
     }
-    const nearestText = nearestDistanceMeters !== null ? ", 最短 " + nearestDistanceMeters + "m" : "";
-    const message =
-      "表示 " +
-      renderedMarkerCount +
-      " 件（画面内 " +
-      visibleMarkerCount +
-      " 件 / 総数 " +
-      allTweets.length +
-      " 件" +
-      nearestText +
-      "）";
+    const nearestText = nearestDistanceMeters !== null ? nearestDistanceMeters + "m" : "-";
+    const farthestText = farthestDistanceMeters !== null ? farthestDistanceMeters + "m" : "-";
+    const message = "最短: " + nearestText + " / 最長: " + farthestText;
     const cacheKey = [
-      renderedMarkerCount,
-      visibleMarkerCount,
-      allTweets.length,
       nearestDistanceMeters === null ? "-" : nearestDistanceMeters,
+      farthestDistanceMeters === null ? "-" : farthestDistanceMeters,
     ].join("|");
     if (cacheKey === markerStatusCacheKey) {
       return;
@@ -1044,6 +1035,7 @@
     const count = candidates.length;
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
+    const farthestDistanceRounded = farthestDistance !== null ? Math.round(farthestDistance) : null;
     updateCameraFarByDistance(farthestDistance);
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
     const headingNow = deviceHeading === null ? 0 : deviceHeading;
@@ -1063,6 +1055,7 @@
     nearbyCandidateCount = allTweets.length;
     renderedMarkerCount = count;
     nearestDistanceMeters = nearestDistance;
+    farthestDistanceMeters = farthestDistanceRounded;
     for (let i = 0; i < count; i++) {
       const candidate = candidates[i];
       const t = candidate.tweet;
