@@ -442,6 +442,25 @@
     return Math.log(1 + perspectiveStrength * t) / Math.log(1 + perspectiveStrength);
   }
 
+  function xScatterDistanceScale(distanceMeters) {
+    if (!Number.isFinite(distanceMeters) || distanceMeters < 0) {
+      return 1;
+    }
+    const nearMeters = Math.max(0, numberSetting(displaySettings.xScatterNearMeters, 1000));
+    const farMeters = Math.max(nearMeters + 1, numberSetting(displaySettings.xScatterFarMeters, 100000));
+    const farScale = clamp(numberSetting(displaySettings.xScatterFarScale, 0.05), 0, 1);
+    const exponent = Math.max(0.1, numberSetting(displaySettings.xScatterDistanceExponent, 0.85));
+    if (distanceMeters <= nearMeters) {
+      return 1;
+    }
+    if (distanceMeters >= farMeters) {
+      return farScale;
+    }
+    const t = (distanceMeters - nearMeters) / (farMeters - nearMeters);
+    const eased = Math.pow(t, exponent);
+    return 1 - (1 - farScale) * eased;
+  }
+
   function clearMarkers() {
     clearSelection();
     if (buildTimer !== null) {
@@ -699,7 +718,8 @@
         (marker.laneOffset * numberSetting(displaySettings.xScatterLaneWeight, 34) +
           marker.clusterOffset * numberSetting(displaySettings.xScatterClusterWeight, 56)) *
         (numberSetting(displaySettings.xScatterBaseFactor, 0.8) +
-          marker.distanceNorm * numberSetting(displaySettings.xScatterDistanceFactor, 1.2));
+          marker.distanceNorm * numberSetting(displaySettings.xScatterDistanceFactor, 1.2)) *
+        xScatterDistanceScale(marker.distanceRawMeters);
       const rawYScatter =
         (marker.laneOffset * numberSetting(displaySettings.yScatterLaneWeight, 17.5) +
           marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
@@ -1043,6 +1063,7 @@
         labelBaseOpacity: labelOpacity,
         tweetText: t.text,
         distanceMeters: String(Math.round(distance)),
+        distanceRawMeters: distance,
         boxWidth: root.offsetWidth || 140,
         boxHeight: root.offsetHeight || 42,
         overlapLevel: 0,
