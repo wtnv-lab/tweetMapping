@@ -270,3 +270,76 @@ html, body {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+
+#debugSwitchWrap {
+  position: fixed;
+  top: calc(44px + env(safe-area-inset-top));
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 5;
+  opacity: 0.95;
+  pointer-events: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-bg);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-fg);
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#debugSwitchLabel {
+  color: var(--ui-fg);
+  font-size: 12px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.debug-switch {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  display: inline-block;
+}
+
+.debug-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.debug-slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  transition: background 180ms ease;
+  cursor: pointer;
+}
+
+.debug-slider::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms ease;
+}
+
+.debug-switch input:checked + .debug-slider {
+  background: rgba(80, 170, 255, 0.88);
+}
+
+.debug-switch input:checked + .debug-slider::before {
+  transform: translateX(16px);
+}
