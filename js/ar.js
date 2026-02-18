@@ -42,7 +42,7 @@
   const minBuildIntervalMs = numberSetting(displaySettings.minBuildIntervalMs, 1200);
   const maxLabelChars = numberSetting(displaySettings.maxLabelChars, 26);
   const arFieldYOffsetPx = numberSetting(displaySettings.arFieldYOffsetPx, -20);
-  const offscreenMargin = numberSetting(displaySettings.offscreenMargin, 48);
+  const offscreenMargin = numberSetting(displaySettings.offscreenMargin, 140);
   const laneStepDeg = numberSetting(displaySettings.laneStepDeg, 2.8);
   const clusterStepDeg = numberSetting(displaySettings.clusterStepDeg, 8.0);
   const ua = navigator.userAgent || "";
@@ -65,6 +65,8 @@
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
+  let visibleMarkerCount = 0;
+  let markerStatusCacheKey = "";
   let selectedMarker = null;
   let lastBuildAt = 0;
   let buildTimer = null;
@@ -322,6 +324,36 @@
     }
     markerEntities = [];
     autoAlignYOffsetRatio = 0;
+    visibleMarkerCount = 0;
+    markerStatusCacheKey = "";
+  }
+
+  function updateMarkerStatusText() {
+    if (!currentPosition || renderedMarkerCount <= 0) {
+      return;
+    }
+    const nearestText = nearestDistanceMeters !== null ? ", 最短 " + nearestDistanceMeters + "m" : "";
+    const message =
+      "表示 " +
+      renderedMarkerCount +
+      " 件（画面内 " +
+      visibleMarkerCount +
+      " 件 / 総数 " +
+      allTweets.length +
+      " 件" +
+      nearestText +
+      "）";
+    const cacheKey = [
+      renderedMarkerCount,
+      visibleMarkerCount,
+      allTweets.length,
+      nearestDistanceMeters === null ? "-" : nearestDistanceMeters,
+    ].join("|");
+    if (cacheKey === markerStatusCacheKey) {
+      return;
+    }
+    markerStatusCacheKey = cacheKey;
+    setStatus(message);
   }
 
   function toLabel(text) {
@@ -409,11 +441,36 @@
     }
     const x = (projectedPoint.x * 0.5 + 0.5) * width;
     const y = (-projectedPoint.y * 0.5 + 0.5) * height;
-    // Y is clamped later by UI layout logic; avoid hiding markers on strong tilt.
-    if (x < -220 || x > width + 220) {
-      return null;
-    }
+    // X/Yの最終判定は散らし補正後に行う。ここで早期除外すると密集方向で欠落しやすい。
     return { x: x, y: y };
+  }
+
+  function updateCameraFarByDistance(farthestDistanceMeters) {
+    if (!scene) {
+      return;
+    }
+    const camEntity = scene.querySelector("#arCamera");
+    if (!camEntity) {
+      return;
+    }
+    const cameraObj = camEntity.getObject3D("camera");
+    if (!cameraObj) {
+      return;
+    }
+    const fallbackFar = numberSetting(displaySettings.cameraFarDefault, 12000);
+    const targetFar = Math.round(
+      clamp(
+        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) *
+          numberSetting(displaySettings.cameraFarPaddingFactor, 1.25),
+        numberSetting(displaySettings.cameraFarMin, fallbackFar),
+        numberSetting(displaySettings.cameraFarMax, 20000000)
+      )
+    );
+    if (Math.abs((cameraObj.far || 0) - targetFar) < 1) {
+      return;
+    }
+    cameraObj.far = targetFar;
+    cameraObj.updateProjectionMatrix();
   }
 
   function updateScreenMarkers() {
@@ -431,6 +488,7 @@
     cameraObj.updateMatrixWorld(true);
     const width = window.innerWidth;
     const height = window.innerHeight;
+    let visibleCount = 0;
     cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
     const cameraPitchDeg = Math.asin(clamp(cameraForwardWorld.y, -1, 1)) * (180 / Math.PI);
     for (let i = 0; i < markerEntities.length; i++) {
@@ -459,13 +517,19 @@
       const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 90));
       const tiltCenterDeg = numberSetting(displaySettings.tiltPitchCenterDeg, 90);
       const tiltInvert = !!displaySettings.tiltInvert;
-      const tiltBase = typeof devicePitchDeg === "number"
-        ? devicePitchDeg
-        : Number.isFinite(cameraPitchDeg)
-          ? cameraPitchDeg
+      // センサー値より実カメラ姿勢を優先し、端末実装差での過補正を抑える。
+      const tiltBase = Number.isFinite(cameraPitchDeg)
+        ? cameraPitchDeg
+        : typeof devicePitchDeg === "number"
+          ? devicePitchDeg
           : 0;
       const tiltRaw = tiltBase - tiltCenterDeg;
-      const tiltSigned = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
+      const tiltSignedRaw = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
+      const tiltSigned = clamp(
+        tiltSignedRaw,
+        -numberSetting(displaySettings.tiltLayoutClamp, 0.35),
+        numberSetting(displaySettings.tiltLayoutClamp, 0.35)
+      );
       const tiltMagnitude = Math.abs(tiltSigned);
       const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * -tiltSigned;
       const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
@@ -479,11 +543,14 @@
       const extraSpan = baseSpan * (tiltSpread - 1);
       const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
       const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
-      const targetY = clamp(
+      const rankedY = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         clampMin,
         clampMax
       );
+      // ランク配置だけだと水平時に遠方が画面外へ寄るため、実投影Yを混ぜて安定化する。
+      const targetY = rankedY * (1 - numberSetting(displaySettings.screenYProjectionBlend, 0.4)) +
+        screenPos.y * numberSetting(displaySettings.screenYProjectionBlend, 0.4);
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
         marker.screenY = targetY;
@@ -505,7 +572,10 @@
       marker.root.style.left = marker.screenX.toFixed(1) + "px";
       marker.root.style.top = marker.screenY.toFixed(1) + "px";
       marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
+      visibleCount += 1;
     }
+    visibleMarkerCount = visibleCount;
+    updateMarkerStatusText();
     updateTelemetry();
     if (selectedMarker && selectedMarker.root) {
       if (selectedMarker.root.style.display === "none") {
@@ -617,24 +687,21 @@
     const count = candidates.length;
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
+    updateCameraFarByDistance(farthestDistance);
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
     const headingNow = deviceHeading === null ? 0 : deviceHeading;
     const laneSlots = new Map();
     const clusterSlots = new Map();
-    function directedOffsetUnits(indexInGroup, verticalNorm) {
+    function directedOffsetUnits(indexInGroup, verticalNorm, spreadCap, biasStrength) {
       if (indexInGroup === 0) {
         return 0;
       }
-      // 直近100件内の順位（分位）で上下方向を決める。
-      if (verticalNorm <= 0.45) {
-        return indexInGroup;
-      }
-      if (verticalNorm >= 0.7) {
-        return -indexInGroup;
-      }
+      // 密集時も上下に偏り過ぎないよう、交互配置を上限付きで使う。
       const level = Math.floor((indexInGroup + 1) / 2);
       const sign = indexInGroup % 2 === 1 ? 1 : -1;
-      return level * sign;
+      const zigzag = level * sign;
+      const verticalBias = (0.5 - verticalNorm) * biasStrength;
+      return clamp(zigzag + verticalBias, -spreadCap, spreadCap);
     }
     nearbyCandidateCount = allTweets.length;
     renderedMarkerCount = count;
@@ -660,14 +727,26 @@
       // Keep vertical offsets small; distance is represented by true depth.
       const baseY = numberSetting(displaySettings.markerBaseY, 1.8);
       const spreadStep = numberSetting(displaySettings.markerSpreadStep, 0.45);
-      const laneOffset = directedOffsetUnits(laneIndex, verticalNorm);
-      const clusterOffset = directedOffsetUnits(clusterIndex, verticalNorm);
+      const laneOffset = directedOffsetUnits(
+        laneIndex,
+        verticalNorm,
+        numberSetting(displaySettings.markerLaneSpreadCap, 4.0),
+        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+      );
+      const clusterOffset = directedOffsetUnits(
+        clusterIndex,
+        verticalNorm,
+        numberSetting(displaySettings.markerClusterSpreadCap, 3.0),
+        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+      );
+      const laneCrowd = Math.min(laneIndex, numberSetting(displaySettings.markerLaneCrowdCap, 6));
+      const clusterCrowd = Math.min(clusterIndex, numberSetting(displaySettings.markerClusterCrowdCap, 6));
       const densityBoost =
         1 +
         Math.min(
           numberSetting(displaySettings.markerDensityMaxAdd, 2.0),
-          clusterIndex * numberSetting(displaySettings.markerDensityClusterFactor, 0.2) +
-            laneIndex * numberSetting(displaySettings.markerDensityLaneFactor, 0.1)
+          clusterCrowd * numberSetting(displaySettings.markerDensityClusterFactor, 0.2) +
+            laneCrowd * numberSetting(displaySettings.markerDensityLaneFactor, 0.1)
         );
       const combinedOffset =
         laneOffset + clusterOffset * numberSetting(displaySettings.markerClusterOffsetWeight, 1.8);
@@ -758,16 +837,7 @@
     autoAlignYOffsetRatio +=
       (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * numberSetting(displaySettings.autoAlignLerp, 0.35);
     updateScreenMarkers();
-    const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
-    const message =
-      "表示 " +
-      count +
-      " 件（総数 " +
-      allTweets.length +
-      " 件" +
-      nearestText +
-      "）";
-    setStatus(message);
+    updateMarkerStatusText();
     lastBuildPosition = {
       latitude: lat,
       longitude: lon,
