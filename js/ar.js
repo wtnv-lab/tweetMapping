@@ -38,18 +38,83 @@
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
-  const maxMarkers = numberSetting(displaySettings.maxMarkers, 100);
-  const rebuildThresholdMeters = numberSetting(displaySettings.rebuildThresholdMeters, 30);
-  const minBuildIntervalMs = numberSetting(displaySettings.minBuildIntervalMs, 1200);
-  const maxLabelChars = numberSetting(displaySettings.maxLabelChars, 26);
-  const arFieldYOffsetPx = numberSetting(displaySettings.arFieldYOffsetPx, -20);
-  const offscreenMargin = numberSetting(displaySettings.offscreenMargin, 140);
-  const laneStepDeg = numberSetting(displaySettings.laneStepDeg, 2.8);
-  const clusterStepDeg = numberSetting(displaySettings.clusterStepDeg, 8.0);
-  const overlapRepulsionEnabled = !!displaySettings.overlapRepulsionEnabled;
-  const overlapVibrationEnabled = !!displaySettings.overlapVibrationEnabled;
-  const overlapVibrationAmplitudePx = numberSetting(displaySettings.overlapVibrationAmplitudePx, 10);
-  const overlapVibrationFrequencyHz = numberSetting(displaySettings.overlapVibrationFrequencyHz, 2.2);
+  const verticalRangeTopRatio = numberSetting(displaySettings.verticalRangeTopRatio, 0.0);
+  const verticalRangeBottomRatio = numberSetting(displaySettings.verticalRangeBottomRatio, 0.8);
+  const iconSizeMinPx = numberSetting(displaySettings.iconSizeMinPx, 5);
+  const iconSizeMaxPx = numberSetting(displaySettings.iconSizeMaxPx, 38);
+  const labelSizeMinPx = numberSetting(displaySettings.labelSizeMinPx, 10);
+  const labelSizeMaxPx = numberSetting(displaySettings.labelSizeMaxPx, 31);
+  const iconOpacityMin = numberSetting(displaySettings.iconOpacityMin, 0.36);
+  const iconOpacityMax = numberSetting(displaySettings.iconOpacityMax, 0.98);
+  const labelOpacityMin = numberSetting(displaySettings.labelOpacityMin, 0.65);
+  const labelOpacityMax = numberSetting(displaySettings.labelOpacityMax, 0.99);
+  const nonLinearExponent = Math.max(0.2, numberSetting(displaySettings.nonLinearExponent, 0.36));
+  const tiltFollowShiftRatio = numberSetting(displaySettings.tiltFollowShiftRatio, 0.06);
+  const tiltSpacingFactor = numberSetting(displaySettings.tiltSpacingFactor, 3.0);
+  const scatterLaneWeight = 34;
+  const scatterClusterWeight = 56;
+  const scatterBaseFactor = 0.8;
+  const scatterDistanceFactor = 1.2;
+  const scatterYWeightScale = 0.515;
+  const scatterYFactorScale = 0.56;
+  const scatterYLaneWeight = scatterLaneWeight * scatterYWeightScale;
+  const scatterYClusterWeight = scatterClusterWeight * scatterYWeightScale;
+  const scatterYBaseFactor = scatterBaseFactor * scatterYFactorScale;
+  const scatterYDistanceFactor = scatterDistanceFactor * scatterYFactorScale;
+  const maxMarkers = 100;
+  const rebuildThresholdMeters = 30;
+  const minBuildIntervalMs = 1200;
+  const maxLabelChars = 26;
+  const arFieldYOffsetPx = 0;
+  const offscreenMargin = 48;
+  const laneStepDeg = 2.8;
+  const clusterStepDeg = 8.0;
+  const overlapRepulsionEnabled = true;
+  const overlapVibrationEnabled = false;
+  const overlapVibrationAmplitudePx = 10;
+  const overlapVibrationFrequencyHz = 2.2;
+  const perspectiveStrength = 3.0;
+  const scatterNearMeters = 1000;
+  const scatterFarMeters = 100000;
+  const scatterFarScale = 0.05;
+  const scatterDistanceExponent = 0.85;
+  const cameraFarDefault = 12000;
+  const cameraFarPaddingFactor = 1.25;
+  const cameraFarMin = 12000;
+  const cameraFarMax = 20000000;
+  const tiltPitchRangeDeg = 90;
+  const tiltPitchCenterDeg = 90;
+  const tiltInvert = true;
+  const tiltLayoutClamp = 0.35;
+  const tiltSpreadFactor = 0.5;
+  const rankScatterRatio = 0.02;
+  const screenYProjectionBlend = 0.4;
+  const screenXSmooth = 0.42;
+  const screenYSmooth = 0.22;
+  const autoAlignEnabled = 0;
+  const autoAlignTargetRatio = 0.49;
+  const autoAlignMaxShiftRatio = 0.14;
+  const autoAlignLerp = 0.35;
+  const targetYMinRatio = -0.12;
+  const targetYMaxRatio = 0.7;
+  const verticalSpreadScale = 0.5;
+  const markerBaseY = 1.8;
+  const markerSpreadStep = 0.45;
+  const markerLaneSpreadCap = 4.0;
+  const markerClusterSpreadCap = 3.0;
+  const markerVerticalBiasStrength = 0.8;
+  const markerLaneCrowdCap = 6;
+  const markerClusterCrowdCap = 6;
+  const markerDensityMaxAdd = 2.0;
+  const markerDensityClusterFactor = 0.2;
+  const markerDensityLaneFactor = 0.1;
+  const markerClusterOffsetWeight = 1.8;
+  const markerYMin = 0.6;
+  const markerYMax = 7.5;
+  const iconSizeDistanceFactor = 33;
+  const labelSizeDistanceFactor = 34;
+  const iconOpacityDistanceFactor = 0.62;
+  const labelOpacityDistanceFactor = 0.34;
   const locationPickerEnabled = !!locationPickerConfig.enabled;
   const locationPickerCities = Array.isArray(locationPickerConfig.cities)
     ? locationPickerConfig.cities
@@ -435,7 +500,6 @@
 
   function toPerspectiveNorm(verticalNorm) {
     const t = clamp(verticalNorm, 0, 1);
-    const perspectiveStrength = Math.max(0, numberSetting(displaySettings.rankPerspectiveStrength, 2.5));
     if (perspectiveStrength <= 0) {
       return t;
     }
@@ -446,10 +510,10 @@
     if (!Number.isFinite(distanceMeters) || distanceMeters < 0) {
       return 1;
     }
-    const nearMeters = Math.max(0, numberSetting(displaySettings.xScatterNearMeters, 1000));
-    const farMeters = Math.max(nearMeters + 1, numberSetting(displaySettings.xScatterFarMeters, 100000));
-    const farScale = clamp(numberSetting(displaySettings.xScatterFarScale, 0.05), 0, 1);
-    const exponent = Math.max(0.1, numberSetting(displaySettings.xScatterDistanceExponent, 0.85));
+    const nearMeters = Math.max(0, scatterNearMeters);
+    const farMeters = Math.max(nearMeters + 1, scatterFarMeters);
+    const farScale = clamp(scatterFarScale, 0, 1);
+    const exponent = Math.max(0.1, scatterDistanceExponent);
     if (distanceMeters <= nearMeters) {
       return 1;
     }
@@ -608,13 +672,12 @@
     if (!cameraObj) {
       return;
     }
-    const fallbackFar = numberSetting(displaySettings.cameraFarDefault, 12000);
+    const fallbackFar = cameraFarDefault;
     const targetFar = Math.round(
       clamp(
-        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) *
-          numberSetting(displaySettings.cameraFarPaddingFactor, 1.25),
-        numberSetting(displaySettings.cameraFarMin, fallbackFar),
-        numberSetting(displaySettings.cameraFarMax, 20000000)
+        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) * cameraFarPaddingFactor,
+        cameraFarMin,
+        cameraFarMax
       )
     );
     if (Math.abs((cameraObj.far || 0) - targetFar) < 1) {
@@ -715,64 +778,57 @@
         continue;
       }
       const xScatter =
-        (marker.laneOffset * numberSetting(displaySettings.xScatterLaneWeight, 34) +
-          marker.clusterOffset * numberSetting(displaySettings.xScatterClusterWeight, 56)) *
-        (numberSetting(displaySettings.xScatterBaseFactor, 0.8) +
-          marker.distanceNorm * numberSetting(displaySettings.xScatterDistanceFactor, 1.2)) *
+        (marker.laneOffset * scatterLaneWeight + marker.clusterOffset * scatterClusterWeight) *
+        (scatterBaseFactor + marker.distanceNorm * scatterDistanceFactor) *
         xScatterDistanceScale(marker.distanceRawMeters);
       const rawYScatter =
-        (marker.laneOffset * numberSetting(displaySettings.yScatterLaneWeight, 17.5) +
-          marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
-        (numberSetting(displaySettings.yScatterBaseFactor, 0.4375) +
-          verticalNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
+        (marker.laneOffset * scatterYLaneWeight + marker.clusterOffset * scatterYClusterWeight) *
+        (scatterYBaseFactor + verticalNorm * scatterYDistanceFactor);
       const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
-      const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
-      const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
+      const topRatio = verticalRangeTopRatio;
+      const bottomRatio = verticalRangeBottomRatio;
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
-      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 90));
-      const tiltCenterDeg = numberSetting(displaySettings.tiltPitchCenterDeg, 90);
-      const tiltInvert = !!displaySettings.tiltInvert;
+      const verticalDistributionNorm = Math.pow(clamp(perspectiveNorm, 0, 1), nonLinearExponent);
+      const tiltRangeDeg = Math.max(1, tiltPitchRangeDeg);
       // センサー値より実カメラ姿勢を優先し、端末実装差での過補正を抑える。
       const tiltBase = Number.isFinite(cameraPitchDeg)
         ? cameraPitchDeg
         : typeof devicePitchDeg === "number"
           ? devicePitchDeg
           : 0;
-      const tiltRaw = tiltBase - tiltCenterDeg;
+      const tiltRaw = tiltBase - tiltPitchCenterDeg;
       const tiltSignedRaw = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
-      const tiltSigned = clamp(
-        tiltSignedRaw,
-        -numberSetting(displaySettings.tiltLayoutClamp, 0.35),
-        numberSetting(displaySettings.tiltLayoutClamp, 0.35)
-      );
+      const tiltSigned = clamp(tiltSignedRaw, -tiltLayoutClamp, tiltLayoutClamp);
       const tiltMagnitude = Math.abs(tiltSigned);
-      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * -tiltSigned;
-      const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
-      const yBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const tiltShiftPx = height * tiltFollowShiftRatio * -tiltSigned;
+      const tiltSpread = 1 + tiltMagnitude * tiltSpreadFactor;
+      const yBase = height * (topRatio + (bottomRatio - topRatio) * verticalDistributionNorm);
       const anchorBase = tiltSigned <= 0 ? height * topRatio : height * bottomRatio;
       const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
-      const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
+      const yScatterCapPx = height * rankScatterRatio;
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const baseSpan = height * (bottomRatio - topRatio);
       const extraSpan = baseSpan * (tiltSpread - 1);
       const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
       const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
-      const rankedY = clamp(
+      const rankedYBase = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         clampMin,
         clampMax
       );
+      const tiltSpacingBoost = 1 + tiltMagnitude * tiltSpacingFactor;
+      const verticalCenter = (clampMin + clampMax) * 0.5;
+      const rankedY = clamp(verticalCenter + (rankedYBase - verticalCenter) * tiltSpacingBoost, clampMin, clampMax);
       // ランク配置だけだと水平時に遠方が画面外へ寄るため、実投影Yを混ぜて安定化する。
-      const targetY = rankedY * (1 - numberSetting(displaySettings.screenYProjectionBlend, 0.4)) +
-        screenPos.y * numberSetting(displaySettings.screenYProjectionBlend, 0.4);
+      const targetY = rankedY * (1 - screenYProjectionBlend) + screenPos.y * screenYProjectionBlend;
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
         marker.screenY = targetY;
       } else {
         // Keep Y smoothing for stability but make X more responsive to panning.
-        marker.screenX += (targetX - marker.screenX) * numberSetting(displaySettings.screenXSmooth, 0.42);
-        marker.screenY += (targetY - marker.screenY) * numberSetting(displaySettings.screenYSmooth, 0.22);
+        marker.screenX += (targetX - marker.screenX) * screenXSmooth;
+        marker.screenY += (targetY - marker.screenY) * screenYSmooth;
       }
       layoutCandidates.push(marker);
     }
@@ -831,12 +887,9 @@
   }
 
   function computeAutoAlignYOffsetRatio(markers) {
-    if (!numberSetting(displaySettings.autoAlignEnabled, 1) || !Array.isArray(markers) || markers.length === 0) {
+    if (!autoAlignEnabled || !Array.isArray(markers) || markers.length === 0) {
       return 0;
     }
-    const targetYMinRatio = numberSetting(displaySettings.targetYMinRatio, -0.12);
-    const targetYMaxRatio = numberSetting(displaySettings.targetYMaxRatio, 0.7);
-    const verticalSpreadScale = numberSetting(displaySettings.verticalSpreadScale, 0.5);
     const distanceBandSpan = (targetYMaxRatio - targetYMinRatio) * verticalSpreadScale;
     const centers = [];
     for (let i = 0; i < markers.length; i++) {
@@ -864,8 +917,8 @@
     });
     const mid = Math.floor(centers.length / 2);
     const median = centers.length % 2 === 0 ? (centers[mid - 1] + centers[mid]) * 0.5 : centers[mid];
-    const targetRatio = numberSetting(displaySettings.autoAlignTargetRatio, 0.52);
-    const maxShiftRatio = numberSetting(displaySettings.autoAlignMaxShiftRatio, 0.14);
+    const targetRatio = autoAlignTargetRatio;
+    const maxShiftRatio = autoAlignMaxShiftRatio;
     return clamp(targetRatio - median, -maxShiftRatio, maxShiftRatio);
   }
 
@@ -958,64 +1011,58 @@
       const clusterIndex = clusterSlots.get(clusterKey) || 0;
       clusterSlots.set(clusterKey, clusterIndex + 1);
       // Keep vertical offsets small; distance is represented by true depth.
-      const baseY = numberSetting(displaySettings.markerBaseY, 1.8);
-      const spreadStep = numberSetting(displaySettings.markerSpreadStep, 0.45);
+      const baseY = markerBaseY;
+      const spreadStep = markerSpreadStep;
       const laneOffset = directedOffsetUnits(
         laneIndex,
         verticalNorm,
-        numberSetting(displaySettings.markerLaneSpreadCap, 4.0),
-        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+        markerLaneSpreadCap,
+        markerVerticalBiasStrength
       );
       const clusterOffset = directedOffsetUnits(
         clusterIndex,
         verticalNorm,
-        numberSetting(displaySettings.markerClusterSpreadCap, 3.0),
-        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+        markerClusterSpreadCap,
+        markerVerticalBiasStrength
       );
-      const laneCrowd = Math.min(laneIndex, numberSetting(displaySettings.markerLaneCrowdCap, 6));
-      const clusterCrowd = Math.min(clusterIndex, numberSetting(displaySettings.markerClusterCrowdCap, 6));
+      const laneCrowd = Math.min(laneIndex, markerLaneCrowdCap);
+      const clusterCrowd = Math.min(clusterIndex, markerClusterCrowdCap);
       const densityBoost =
         1 +
         Math.min(
-          numberSetting(displaySettings.markerDensityMaxAdd, 2.0),
-          clusterCrowd * numberSetting(displaySettings.markerDensityClusterFactor, 0.2) +
-            laneCrowd * numberSetting(displaySettings.markerDensityLaneFactor, 0.1)
+          markerDensityMaxAdd,
+          clusterCrowd * markerDensityClusterFactor + laneCrowd * markerDensityLaneFactor
         );
-      const combinedOffset =
-        laneOffset + clusterOffset * numberSetting(displaySettings.markerClusterOffsetWeight, 1.8);
+      const combinedOffset = laneOffset + clusterOffset * markerClusterOffsetWeight;
       const markerY = clamp(
         baseY + combinedOffset * spreadStep * densityBoost,
-        numberSetting(displaySettings.markerYMin, 0.6),
-        numberSetting(displaySettings.markerYMax, 7.5)
+        markerYMin,
+        markerYMax
       );
       const iconSize = clamp(
-        numberSetting(displaySettings.iconSizeMax, 86) -
-          distanceNorm * numberSetting(displaySettings.iconSizeDistanceFactor, 74),
-        numberSetting(displaySettings.iconSizeMin, 12),
-        numberSetting(displaySettings.iconSizeMax, 86)
+        iconSizeMaxPx - distanceNorm * iconSizeDistanceFactor,
+        iconSizeMinPx,
+        iconSizeMaxPx
       );
       const label = toLabel(t.text);
       const labelFontNorm = verticalNorm;
       const labelFontPx = Math.round(
         clamp(
-          numberSetting(displaySettings.labelFontMax, 44) -
-            labelFontNorm * numberSetting(displaySettings.labelFontDistanceFactor, 34),
-          numberSetting(displaySettings.labelFontMin, 10),
-          numberSetting(displaySettings.labelFontMax, 44)
+          labelSizeMaxPx - labelFontNorm * labelSizeDistanceFactor,
+          labelSizeMinPx,
+          labelSizeMaxPx
         )
       );
       const opacityNorm = toPerspectiveNorm(verticalNorm);
       const iconOpacity = clamp(
-        numberSetting(displaySettings.iconOpacityStart, 0.98) -
-          opacityNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
-        numberSetting(displaySettings.iconOpacityMin, 0.36),
-        numberSetting(displaySettings.iconOpacityMax, 0.98)
+        iconOpacityMax - opacityNorm * iconOpacityDistanceFactor,
+        iconOpacityMin,
+        iconOpacityMax
       );
       const labelOpacity = clamp(
-        numberSetting(displaySettings.labelOpacityStart, 0.99) -
-          opacityNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
-        numberSetting(displaySettings.labelOpacityMin, 0.31),
-        numberSetting(displaySettings.labelOpacityMax, 0.99)
+        labelOpacityMax - opacityNorm * labelOpacityDistanceFactor,
+        labelOpacityMin,
+        labelOpacityMax
       );
       const worldPosition = new THREE.Vector3(x, markerY, z);
 
@@ -1074,8 +1121,7 @@
       markerEntities.push(marker);
     }
     const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
-    autoAlignYOffsetRatio +=
-      (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * numberSetting(displaySettings.autoAlignLerp, 0.35);
+    autoAlignYOffsetRatio += (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * autoAlignLerp;
     updateScreenMarkers();
     updateMarkerStatusText();
     lastBuildPosition = {
