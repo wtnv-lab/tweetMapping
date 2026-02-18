@@ -14,6 +14,7 @@
   const markerLayer = document.getElementById("markerLayer");
   const arConfig = window.AR_CONFIG || {};
   const geolocationConfig = arConfig.geolocation || {};
+  const locationPickerConfig = arConfig.locationPicker || {};
   const debugConfig = arConfig.debug || {};
   const debugTestLocation = debugConfig.testLocation || {};
   const tweetDataUrl = arConfig.tweetDataUrl || "data/czml/tweets.json";
@@ -45,6 +46,32 @@
   const offscreenMargin = numberSetting(displaySettings.offscreenMargin, 140);
   const laneStepDeg = numberSetting(displaySettings.laneStepDeg, 2.8);
   const clusterStepDeg = numberSetting(displaySettings.clusterStepDeg, 8.0);
+  const overlapRepulsionEnabled = !!displaySettings.overlapRepulsionEnabled;
+  const overlapVibrationEnabled = !!displaySettings.overlapVibrationEnabled;
+  const overlapVibrationAmplitudePx = numberSetting(displaySettings.overlapVibrationAmplitudePx, 10);
+  const overlapVibrationFrequencyHz = numberSetting(displaySettings.overlapVibrationFrequencyHz, 2.2);
+  const locationPickerEnabled = !!locationPickerConfig.enabled;
+  const locationPickerCities = Array.isArray(locationPickerConfig.cities)
+    ? locationPickerConfig.cities
+        .map(function (city) {
+          if (!city) {
+            return null;
+          }
+          const lat = Number(city.lat);
+          const lon = Number(city.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            return null;
+          }
+          return {
+            label: String(city.label || "City"),
+            lat: lat,
+            lon: lon,
+          };
+        })
+        .filter(function (city) {
+          return city !== null;
+        })
+    : [];
   const ua = navigator.userAgent || "";
   const isPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|webOS|Opera Mini/i.test(ua);
   const isTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
@@ -74,6 +101,10 @@
   let arStarting = false;
   let arActive = false;
   let autoAlignYOffsetRatio = 0;
+  let locationSourceMode = "device";
+  let selectedCityIndex = -1;
+  let locationSourceButton = null;
+  let locationSourceSelect = null;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
   const cameraForwardBase = new THREE.Vector3(0, 0, -1);
@@ -197,6 +228,107 @@
 
   function setLaunchStatus(message) {
     launchStatus.textContent = message;
+  }
+
+  function selectedCity() {
+    if (selectedCityIndex < 0 || selectedCityIndex >= locationPickerCities.length) {
+      return null;
+    }
+    return locationPickerCities[selectedCityIndex];
+  }
+
+  function applyLocationSourceSelection(sourceValue) {
+    if (sourceValue === "device") {
+      locationSourceMode = "device";
+      selectedCityIndex = -1;
+      if (arActive) {
+        restartLocationPolling();
+        setStatus("現在地(GPS)を使用中...");
+      } else {
+        setLaunchStatus("開始後は現在地(GPS)を使用します。");
+      }
+      return;
+    }
+
+    if (sourceValue.indexOf("city:") !== 0) {
+      return;
+    }
+    const index = Number(sourceValue.slice(5));
+    if (!Number.isInteger(index) || index < 0 || index >= locationPickerCities.length) {
+      return;
+    }
+    locationSourceMode = "city";
+    selectedCityIndex = index;
+    const city = selectedCity();
+    if (!city) {
+      return;
+    }
+    if (arActive) {
+      restartLocationPolling();
+      setStatus(city.label + " の座標を使用中...");
+    } else {
+      setLaunchStatus("開始後は " + city.label + " の座標を使用します。");
+    }
+  }
+
+  function setupLocationPickerUI() {
+    if (!locationPickerEnabled || locationPickerCities.length === 0) {
+      return;
+    }
+    const statusStrip = document.getElementById("statusStrip");
+    if (!statusStrip) {
+      return;
+    }
+    const wrap = document.createElement("div");
+    wrap.id = "locationSourceWrap";
+
+    const button = document.createElement("button");
+    button.id = "locationSourceButton";
+    button.type = "button";
+    button.textContent = "位置";
+
+    const select = document.createElement("select");
+    select.id = "locationSourceSelect";
+    select.setAttribute("aria-label", "位置ソース選択");
+
+    const gpsOption = document.createElement("option");
+    gpsOption.value = "device";
+    gpsOption.textContent = "現在地(GPS)";
+    select.appendChild(gpsOption);
+
+    for (let i = 0; i < locationPickerCities.length; i++) {
+      const city = locationPickerCities[i];
+      const option = document.createElement("option");
+      option.value = "city:" + i;
+      option.textContent = city.label;
+      select.appendChild(option);
+    }
+
+    button.addEventListener("click", function () {
+      if (typeof select.showPicker === "function") {
+        select.showPicker();
+        return;
+      }
+      select.focus();
+      select.click();
+    });
+    select.addEventListener("change", function () {
+      applyLocationSourceSelection(select.value);
+    });
+
+    wrap.appendChild(button);
+    wrap.appendChild(select);
+    statusStrip.appendChild(wrap);
+
+    locationSourceButton = button;
+    locationSourceSelect = select;
+
+    if (locationPickerConfig.defaultSource && String(locationPickerConfig.defaultSource).indexOf("city:") === 0) {
+      select.value = String(locationPickerConfig.defaultSource);
+      applyLocationSourceSelection(select.value);
+    } else {
+      select.value = "device";
+    }
   }
 
   function updateDebugToggleState() {
@@ -473,6 +605,68 @@
     cameraObj.updateProjectionMatrix();
   }
 
+  function resolveMarkerOverlaps(markers, viewportWidth, viewportHeight) {
+    if (!Array.isArray(markers) || markers.length < 2) {
+      return;
+    }
+    const padding = 8;
+    const iterations = 8;
+    const pushStrength = 1.0;
+    const maxOffset = 140;
+    const minY = -offscreenMargin;
+    const maxY = viewportHeight + offscreenMargin;
+    const resolvedY = new Array(markers.length);
+
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      marker.overlapLevel = 0;
+      if (typeof marker.overlapOffsetX !== "number") {
+        marker.overlapOffsetX = 0;
+      }
+      if (typeof marker.overlapOffsetY !== "number") {
+        marker.overlapOffsetY = 0;
+      }
+      resolvedY[i] = marker.screenY;
+    }
+
+    for (let iter = 0; iter < iterations; iter++) {
+      let moved = false;
+      for (let i = 0; i < markers.length; i++) {
+        const a = markers[i];
+        for (let j = i + 1; j < markers.length; j++) {
+          const b = markers[j];
+          const dx = markers[j].screenX - markers[i].screenX;
+          const dy = resolvedY[j] - resolvedY[i];
+          const halfW = (a.boxWidth + b.boxWidth) * 0.5 + padding;
+          const halfH = (a.boxHeight + b.boxHeight) * 0.5 + padding;
+          const overlapX = halfW - Math.abs(dx);
+          const overlapY = halfH - Math.abs(dy);
+          if (overlapX <= 0 || overlapY <= 0) {
+            continue;
+          }
+          moved = true;
+          a.overlapLevel += 1;
+          b.overlapLevel += 1;
+          const pushY = (overlapY + padding) * 0.5 * pushStrength;
+          const aIsNearer = a.distanceNorm <= b.distanceNorm;
+          const topIndex = aIsNearer ? i : j;
+          const bottomIndex = aIsNearer ? j : i;
+          resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+          resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
+        }
+      }
+      if (!moved) {
+        break;
+      }
+    }
+
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      marker.overlapOffsetX = 0;
+      marker.overlapOffsetY = clamp(resolvedY[i] - marker.screenY, -maxOffset, maxOffset);
+    }
+  }
+
   function updateScreenMarkers() {
     if (!scene || markerEntities.length === 0) {
       return;
@@ -491,6 +685,7 @@
     let visibleCount = 0;
     cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
     const cameraPitchDeg = Math.asin(clamp(cameraForwardWorld.y, -1, 1)) * (180 / Math.PI);
+    const layoutCandidates = [];
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i];
       const verticalNorm =
@@ -559,18 +754,36 @@
         marker.screenX += (targetX - marker.screenX) * numberSetting(displaySettings.screenXSmooth, 0.42);
         marker.screenY += (targetY - marker.screenY) * numberSetting(displaySettings.screenYSmooth, 0.22);
       }
+      layoutCandidates.push(marker);
+    }
+
+    if (overlapRepulsionEnabled) {
+      resolveMarkerOverlaps(layoutCandidates, width, height);
+    }
+
+    for (let i = 0; i < layoutCandidates.length; i++) {
+      const marker = layoutCandidates[i];
+      const drawX = marker.screenX + (marker.overlapOffsetX || 0);
+      let drawY = marker.screenY + (marker.overlapOffsetY || 0);
+      if (overlapVibrationEnabled && marker.overlapLevel > 0) {
+        const overlapStrength = clamp(marker.overlapLevel / 4, 0, 1);
+        const omega = overlapVibrationFrequencyHz * Math.PI * 2;
+        const phase = marker.vibrationPhase || 0;
+        const wave = Math.sin(Date.now() * 0.001 * omega + phase);
+        drawY += wave * overlapVibrationAmplitudePx * overlapStrength;
+      }
       if (
-        marker.screenX < -offscreenMargin ||
-        marker.screenX > width + offscreenMargin ||
-        marker.screenY < -offscreenMargin ||
-        marker.screenY > height + offscreenMargin
+        drawX < -offscreenMargin ||
+        drawX > width + offscreenMargin ||
+        drawY < -offscreenMargin ||
+        drawY > height + offscreenMargin
       ) {
         marker.root.style.display = "none";
         continue;
       }
       marker.root.style.display = "inline-flex";
-      marker.root.style.left = marker.screenX.toFixed(1) + "px";
-      marker.root.style.top = marker.screenY.toFixed(1) + "px";
+      marker.root.style.left = drawX.toFixed(1) + "px";
+      marker.root.style.top = drawY.toFixed(1) + "px";
       marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
       visibleCount += 1;
     }
@@ -830,6 +1043,12 @@
         labelBaseOpacity: labelOpacity,
         tweetText: t.text,
         distanceMeters: String(Math.round(distance)),
+        boxWidth: root.offsetWidth || 140,
+        boxHeight: root.offsetHeight || 42,
+        overlapLevel: 0,
+        vibrationPhase: Math.random() * Math.PI * 2,
+        overlapOffsetX: 0,
+        overlapOffsetY: 0,
       };
       markerEntities.push(marker);
     }
@@ -954,6 +1173,31 @@
   }
 
   function startLocationPolling() {
+    if (locationSourceMode === "city") {
+      const city = selectedCity();
+      if (!city) {
+        locationSourceMode = "device";
+      } else {
+        const pollCityPosition = function () {
+          currentPosition = {
+            coords: {
+              latitude: city.lat,
+              longitude: city.lon,
+              accuracy: 10,
+            },
+            timestamp: Date.now(),
+          };
+          if (!lastBuildPosition) {
+            setStatus(city.label + " の座標を使用中...");
+          }
+          maybeRebuildMarkers();
+        };
+        pollCityPosition();
+        locationPollTimer = setInterval(pollCityPosition, locationPollIntervalMs);
+        return;
+      }
+    }
+
     if (useTestLocation) {
       const mockPosition = function () {
         currentPosition = {
@@ -1107,6 +1351,8 @@
       }
     });
   }
+
+  setupLocationPickerUI();
 
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");
