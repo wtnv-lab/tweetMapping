@@ -1,5 +1,6 @@
 (function () {
   const statusText = document.getElementById("statusText");
+  const statusTelemetry = document.getElementById("statusTelemetry");
   const centerPanel = document.getElementById("centerPanel");
   const launchStatus = document.getElementById("launchStatus");
   const startButton = document.getElementById("startButton");
@@ -60,6 +61,7 @@
   let cameraStream = null;
   let locationPollTimer = null;
   let deviceHeading = null;
+  let devicePitchDeg = null;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
@@ -72,6 +74,8 @@
   let autoAlignYOffsetRatio = 0;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
+  const cameraForwardBase = new THREE.Vector3(0, 0, -1);
+  const cameraForwardWorld = new THREE.Vector3();
 
   function readPermissionGrantedAt() {
     try {
@@ -180,6 +184,15 @@
     statusText.textContent = message + "\n現在地: " + lat.toFixed(5) + ", " + lon.toFixed(5);
   }
 
+  function updateTelemetry() {
+    if (!statusTelemetry) {
+      return;
+    }
+    const headingText = typeof deviceHeading === "number" ? deviceHeading.toFixed(0) + "°" : "--°";
+    const pitchText = typeof devicePitchDeg === "number" ? devicePitchDeg.toFixed(1) + "°" : "--°";
+    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText;
+  }
+
   function setLaunchStatus(message) {
     launchStatus.textContent = message;
   }
@@ -262,6 +275,28 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function readDevicePitchDeg(event) {
+    const beta = typeof event.beta === "number" ? event.beta : null;
+    const gamma = typeof event.gamma === "number" ? event.gamma : null;
+    if (beta === null && gamma === null) {
+      return null;
+    }
+    let angle = 0;
+    if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === "number") {
+      angle = window.screen.orientation.angle;
+    } else if (typeof window.orientation === "number") {
+      angle = window.orientation;
+    }
+    const normalized = ((angle % 360) + 360) % 360;
+    if (normalized === 90) {
+      return gamma !== null ? gamma : beta;
+    }
+    if (normalized === 270) {
+      return gamma !== null ? -gamma : beta;
+    }
+    return beta;
   }
 
   function toPerspectiveNorm(verticalNorm) {
@@ -396,6 +431,8 @@
     cameraObj.updateMatrixWorld(true);
     const width = window.innerWidth;
     const height = window.innerHeight;
+    cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    const cameraPitchDeg = Math.asin(clamp(cameraForwardWorld.y, -1, 1)) * (180 / Math.PI);
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i];
       const verticalNorm =
@@ -419,14 +456,33 @@
       const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
       const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
-      const yLinearBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 90));
+      const tiltCenterDeg = numberSetting(displaySettings.tiltPitchCenterDeg, 90);
+      const tiltInvert = !!displaySettings.tiltInvert;
+      const tiltBase = typeof devicePitchDeg === "number"
+        ? devicePitchDeg
+        : Number.isFinite(cameraPitchDeg)
+          ? cameraPitchDeg
+          : 0;
+      const tiltRaw = tiltBase - tiltCenterDeg;
+      const tiltSigned = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
+      const tiltMagnitude = Math.abs(tiltSigned);
+      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * -tiltSigned;
+      const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
+      const yBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const anchorBase = tiltSigned <= 0 ? height * topRatio : height * bottomRatio;
+      const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
       const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
+      const baseSpan = height * (bottomRatio - topRatio);
+      const extraSpan = baseSpan * (tiltSpread - 1);
+      const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
+      const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
       const targetY = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
-        height * topRatio,
-        height * bottomRatio
+        clampMin,
+        clampMax
       );
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
@@ -450,6 +506,7 @@
       marker.root.style.top = marker.screenY.toFixed(1) + "px";
       marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
     }
+    updateTelemetry();
     if (selectedMarker && selectedMarker.root) {
       if (selectedMarker.root.style.display === "none") {
         clearSelection();
@@ -792,6 +849,10 @@
           deviceHeading = event.webkitCompassHeading;
         } else if (event.absolute && typeof event.alpha === "number") {
           deviceHeading = (360 - event.alpha) % 360;
+        }
+        const pitchDeg = readDevicePitchDeg(event);
+        if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
+          devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
         }
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);

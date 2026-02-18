@@ -21,7 +21,7 @@ window.AR_CONFIG = {
     useTestLocationByDefault: false,
 
     // DEBUGスイッチUIを表示するか
-    showToggle: true,
+    showToggle: false,
 
     // DEBUGスイッチON時に使う固定座標
     // 仙台市役所付近: 緯度 38.268721, 経度 140.869407
@@ -74,6 +74,11 @@ window.AR_CONFIG = {
     rankBottomRatio: 0.7,
     rankPerspectiveStrength: 3.0,
     rankScatterRatio: 0.02,
+    tiltPitchRangeDeg: 90,
+    tiltPitchCenterDeg: 90,
+    tiltShiftRatio: 0.06,
+    tiltSpreadFactor: 0.5,
+    tiltInvert: true,
     screenXSmooth: 0.42,
     screenYSmooth: 0.22,
     markerBaseY: 1.8,
