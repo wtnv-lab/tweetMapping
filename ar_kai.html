@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートをARで可視化するデジタルアーカイブ">
+
+  <meta property="og:title" content="東日本大震災ツイートAR">
+  <meta property="og:type" content="website">
+  <meta property="og:description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートをARで可視化するデジタルアーカイブ">
+  <meta property="og:url" content="https://tweet.mapping.jp/ar.html">
+  <meta property="og:image" content="https://tweet.mapping.jp/data/og/ar.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="628">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@hwtnv">
+  <meta name="twitter:creator" content="@hwtnv">
+  <meta name="twitter:title" content="東日本大震災ツイートAR">
+  <meta name="twitter:description" content="東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートをARで可視化するデジタルアーカイブ">
+  <meta name="twitter:image" content="https://tweet.mapping.jp/data/og/ar.jpg">
+
+  <title>東日本大震災ツイートAR</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "東日本大震災ツイートAR",
+    "url": "https://tweet.mapping.jp/ar.html",
+    "description": "東日本大震災発生後24時間以内につぶやかれたジオタグ付きツイートをARで可視化するデジタルアーカイブ",
+    "creator": {
+      "@type": "Person",
+      "name": "渡邉英徳",
+      "url": "https://labo.wtnv.jp/",
+      "sameAs": [
+        "https://researchmap.jp/hwtnv",
+        "https://www.u-tokyo.ac.jp/focus/ja/people/k0001_00068.html",
+        "https://www.iii.u-tokyo.ac.jp/faculty/watanave_hidenori",
+        "https://x.com/hwtnv"
+      ]
+    }
+  }
+  </script>
+  <link rel="stylesheet" type="text/css" media="all" href="./css/ar.css">
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.js"></script>
+</head>
+<body>
+  <div class="overlay" id="centerPanel">
+    <div id="launchCard">
+      <p id="launchTitle">東日本大震災 ツイートAR</p>
+      <img id="launchLoading" src="data/loading.gif" alt="Loading">
+      <p id="launchStatus">カメラ・位置情報を許可してください</p>
+      <button id="startButton" type="button">開始</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="statusStrip">
+    <p id="statusText">待機中</p>
+  </div>
+  <a id="buttonMap" href="index.html" aria-label="地図版へ戻る">MAP</a>
+  <div id="debugSwitchWrap" aria-label="デバッグモード">
+    <span id="debugSwitchLabel">DEBUG</span>
+    <label class="debug-switch">
+      <input id="debugToggle" type="checkbox" aria-label="デバッグモード切替">
+      <span class="debug-slider"></span>
+    </label>
+  </div>
+
+  <video id="cameraFeed" autoplay playsinline muted></video>
+  <div id="arRoot"></div>
+  <div id="markerLayer"></div>
+  <div id="tweetCard">
+    <p id="tweetBody">近くのツイートが見つかるとここに本文を表示します。</p>
+    <p id="tweetMeta">ここから -m</p>
+  </div>
+
+  <script src="js/ar-config.js"></script>
+  <script>
+    window.AR_CONFIG = window.AR_CONFIG || {};
+    window.AR_CONFIG.debug = window.AR_CONFIG.debug || {};
+    window.AR_CONFIG.debug.showToggle = false;
+    window.AR_CONFIG.displaySettings = window.AR_CONFIG.displaySettings || {};
+    window.AR_CONFIG.displaySettings.overlapRepulsionEnabled = true;
+    window.AR_CONFIG.displaySettings.overlapVibrationEnabled = false;
+    window.AR_CONFIG.displaySettings.labelFontMax = 24;
+    window.AR_CONFIG.displaySettings.labelFontMin = 9;
+    window.AR_CONFIG.displaySettings.labelFontDistanceFactor = 28;
+    window.AR_CONFIG.locationPicker = {
+      enabled: true,
+      defaultSource: "device",
+      cities: [
+        { label: "東京", lat: 35.6762, lon: 139.6503 },
+        { label: "大阪", lat: 34.6937, lon: 135.5023 },
+        { label: "名古屋", lat: 35.1815, lon: 136.9066 },
+        { label: "札幌", lat: 43.0618, lon: 141.3545 },
+        { label: "仙台", lat: 38.2682, lon: 140.8694 },
+        { label: "福岡", lat: 33.5902, lon: 130.4017 },
+        { label: "那覇", lat: 26.2124, lon: 127.6809 }
+      ]
+    };
+  </script>
+  <script src="js/ar.js"></script>
+</body>
+</html>
