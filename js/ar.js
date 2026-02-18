@@ -842,6 +842,18 @@
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
           devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
+          if (debugConfig.logTilt) {
+            console.log("[tilt]", {
+              beta: event.beta,
+              gamma: event.gamma,
+              screenAngle:
+                (window.screen && window.screen.orientation && window.screen.orientation.angle) ||
+                window.orientation ||
+                0,
+              pitchDeg: pitchDeg,
+              pitchSmoothed: devicePitchDeg
+            });
+          }
         }
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
