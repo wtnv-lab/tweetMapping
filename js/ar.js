@@ -3,19 +3,36 @@
   const centerPanel = document.getElementById("centerPanel");
   const launchStatus = document.getElementById("launchStatus");
   const startButton = document.getElementById("startButton");
+  const debugSwitchWrap = document.getElementById("debugSwitchWrap");
+  const debugToggle = document.getElementById("debugToggle");
   const tweetCard = document.getElementById("tweetCard");
   const tweetBody = document.getElementById("tweetBody");
   const tweetMeta = document.getElementById("tweetMeta");
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
-
-  const tweetDataUrl = "data/czml/tweets.json";
-  const twitterIconUrl = "data/icon/flags/twitter.png";
-  const locationPollIntervalMs = 5000;
-  const permissionCacheKey = "tweetMappingArPermissionGrantedAt";
-  const permissionCacheWindowMs = 30 * 24 * 60 * 60 * 1000;
-  const displaySettings = window.AR_DISPLAY_SETTINGS || {};
+  const arConfig = window.AR_CONFIG || {};
+  const geolocationConfig = arConfig.geolocation || {};
+  const debugConfig = arConfig.debug || {};
+  const debugTestLocation = debugConfig.testLocation || {};
+  const tweetDataUrl = arConfig.tweetDataUrl || "data/czml/tweets.json";
+  const twitterIconUrl = arConfig.twitterIconUrl || "data/icon/flags/twitter.png";
+  const locationPollIntervalMs =
+    typeof arConfig.locationPollIntervalMs === "number" && Number.isFinite(arConfig.locationPollIntervalMs)
+      ? arConfig.locationPollIntervalMs
+      : 5000;
+  let useTestLocation = !!debugConfig.useTestLocationByDefault;
+  // DEBUGスイッチON時に現在地として使う固定座標（既定: 東京タワー）。
+  const testLocation = {
+    lat: typeof debugTestLocation.lat === "number" && Number.isFinite(debugTestLocation.lat) ? debugTestLocation.lat : 35.65858,
+    lon: typeof debugTestLocation.lon === "number" && Number.isFinite(debugTestLocation.lon) ? debugTestLocation.lon : 139.745433,
+  };
+  const permissionCacheKey = arConfig.permissionCacheKey || "tweetMappingArPermissionGrantedAt";
+  const permissionCacheWindowMs =
+    typeof arConfig.permissionCacheWindowMs === "number" && Number.isFinite(arConfig.permissionCacheWindowMs)
+      ? arConfig.permissionCacheWindowMs
+      : 30 * 24 * 60 * 60 * 1000;
+  const displaySettings = arConfig.displaySettings || {};
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
@@ -51,6 +68,7 @@
   let buildTimer = null;
   let markerRenderFrame = null;
   let arStarting = false;
+  let arActive = false;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
 
@@ -163,6 +181,29 @@
 
   function setLaunchStatus(message) {
     launchStatus.textContent = message;
+  }
+
+  function updateDebugToggleState() {
+    if (debugSwitchWrap) {
+      debugSwitchWrap.style.display = debugConfig.showToggle === false ? "none" : "inline-flex";
+    }
+    if (!debugToggle) {
+      return;
+    }
+    debugToggle.checked = !!useTestLocation;
+  }
+
+  function stopLocationPolling() {
+    if (locationPollTimer !== null) {
+      clearInterval(locationPollTimer);
+      locationPollTimer = null;
+    }
+  }
+
+  function restartLocationPolling() {
+    stopLocationPolling();
+    lastBuildPosition = null;
+    startLocationPolling();
   }
 
   function hideLaunchPanel() {
@@ -737,6 +778,26 @@
   }
 
   function startLocationPolling() {
+    if (useTestLocation) {
+      const mockPosition = function () {
+        currentPosition = {
+          coords: {
+            latitude: testLocation.lat,
+            longitude: testLocation.lon,
+            accuracy: 10,
+          },
+          timestamp: Date.now(),
+        };
+        if (!lastBuildPosition) {
+          setStatus("テスト位置（東京タワー）を使用中...");
+        }
+        maybeRebuildMarkers();
+      };
+      mockPosition();
+      locationPollTimer = setInterval(mockPosition, locationPollIntervalMs);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setStatus("この端末は位置情報に対応していません。");
       return;
@@ -756,9 +817,15 @@
           setStatus("位置情報の取得に失敗: " + error.message);
         },
         {
-          enableHighAccuracy: false,
-          maximumAge: locationPollIntervalMs,
-          timeout: 30000,
+          enableHighAccuracy: !!geolocationConfig.enableHighAccuracy,
+          maximumAge:
+            typeof geolocationConfig.maximumAgeMs === "number" && Number.isFinite(geolocationConfig.maximumAgeMs)
+              ? geolocationConfig.maximumAgeMs
+              : locationPollIntervalMs,
+          timeout:
+            typeof geolocationConfig.timeoutMs === "number" && Number.isFinite(geolocationConfig.timeoutMs)
+              ? geolocationConfig.timeoutMs
+              : 30000,
         }
       );
     };
@@ -770,6 +837,9 @@
   function startAR(options) {
     const opts = options || {};
     const autoStart = !!opts.autoStart;
+    if (typeof opts.useTestLocation === "boolean") {
+      useTestLocation = opts.useTestLocation;
+    }
     if (arStarting) {
       return;
     }
@@ -795,6 +865,7 @@
         bindOrientationDiagnostics();
         startLocationPolling();
         startMarkerRenderLoop();
+        arActive = true;
         setTimeout(function () {
           hideLaunchPanel();
         }, 450);
@@ -806,6 +877,7 @@
       })
       .catch(function (error) {
         arStarting = false;
+        arActive = false;
         centerPanel.classList.remove("is-loading");
         if (autoStart) {
           setLaunchStatus("自動開始できませんでした。開始ボタンを押してください。(" + error.message + ")");
@@ -823,10 +895,7 @@
       clearTimeout(buildTimer);
       buildTimer = null;
     }
-    if (locationPollTimer !== null) {
-      clearInterval(locationPollTimer);
-      locationPollTimer = null;
-    }
+    stopLocationPolling();
     if (markerRenderFrame !== null) {
       cancelAnimationFrame(markerRenderFrame);
       markerRenderFrame = null;
@@ -840,6 +909,28 @@
     }
     cameraStream = null;
   });
+
+  if (debugToggle) {
+    updateDebugToggleState();
+    debugToggle.addEventListener("change", function () {
+      useTestLocation = !!debugToggle.checked;
+      updateDebugToggleState();
+      if (arActive) {
+        restartLocationPolling();
+        setStatus(
+          useTestLocation
+            ? "デバッグモードに切替: 東京タワー付近を現在地として使用中"
+            : "通常モードに切替: 端末の現在地を使用中"
+        );
+      } else {
+        setLaunchStatus(
+          useTestLocation
+            ? "デバッグモード: 東京タワー付近で開始します"
+            : "通常モード: 端末の現在地で開始します"
+        );
+      }
+    });
+  }
 
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");

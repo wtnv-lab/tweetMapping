@@ -60,6 +60,13 @@
     <p id="statusText">待機中</p>
   </div>
   <a id="buttonMap" href="index.html" aria-label="地図版へ戻る">MAP</a>
+  <div id="debugSwitchWrap" aria-label="デバッグモード">
+    <span id="debugSwitchLabel">DEBUG</span>
+    <label class="debug-switch">
+      <input id="debugToggle" type="checkbox" aria-label="デバッグモード切替">
+      <span class="debug-slider"></span>
+    </label>
+  </div>
 
   <video id="cameraFeed" autoplay playsinline muted></video>
   <div id="arRoot"></div>
@@ -69,7 +76,7 @@
     <p id="tweetMeta">ここから -m</p>
   </div>
 
-  <script src="js/ar-display-settings.js"></script>
+  <script src="js/ar-config.js"></script>
   <script src="js/ar.js"></script>
 </body>
 </html>
