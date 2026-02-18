@@ -61,6 +61,7 @@
   let locationPollTimer = null;
   let deviceHeading = null;
   let devicePitchDeg = null;
+  let lastTiltLogAt = 0;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
@@ -842,10 +843,16 @@
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
           devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
-          if (debugConfig.logTilt) {
+        }
+        if (debugConfig.logTilt) {
+          const now = Date.now();
+          if (now - lastTiltLogAt > 200) {
+            lastTiltLogAt = now;
             console.log("[tilt]", {
+              alpha: event.alpha,
               beta: event.beta,
               gamma: event.gamma,
+              absolute: event.absolute,
               screenAngle:
                 (window.screen && window.screen.orientation && window.screen.orientation.angle) ||
                 window.orientation ||

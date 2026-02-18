@@ -23,7 +23,7 @@ window.AR_CONFIG = {
     // DEBUGスイッチUIを表示するか
     showToggle: false,
     // ティルトの検出ログをコンソールに出すか
-    logTilt: false,
+    logTilt: true,
 
     // DEBUGスイッチON時に使う固定座標
     // 仙台市役所付近: 緯度 38.268721, 経度 140.869407
