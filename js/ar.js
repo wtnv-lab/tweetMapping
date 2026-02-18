@@ -69,6 +69,7 @@
   let markerRenderFrame = null;
   let arStarting = false;
   let arActive = false;
+  let autoAlignYOffsetRatio = 0;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
 
@@ -276,6 +277,7 @@
       }
     }
     markerEntities = [];
+    autoAlignYOffsetRatio = 0;
   }
 
   function toLabel(text) {
@@ -419,7 +421,7 @@
         tiltPivotY + height * numberSetting(displaySettings.tiltClampDownRatio, 0.14)
       );
       const targetY = clamp(
-        limitedTiltY + distanceYOffset + yScatter + arFieldYOffsetPx,
+        limitedTiltY + distanceYOffset + yScatter + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         height * numberSetting(displaySettings.targetYMinRatio, -0.12),
         height * numberSetting(displaySettings.targetYMaxRatio, 0.7)
       );
@@ -463,6 +465,36 @@
       updateScreenMarkers();
     };
     markerRenderFrame = requestAnimationFrame(tick);
+  }
+
+  function computeAutoAlignYOffsetRatio(markers) {
+    if (!numberSetting(displaySettings.autoAlignEnabled, 1) || !Array.isArray(markers) || markers.length === 0) {
+      return 0;
+    }
+    const targetYMinRatio = numberSetting(displaySettings.targetYMinRatio, -0.12);
+    const targetYMaxRatio = numberSetting(displaySettings.targetYMaxRatio, 0.7);
+    const verticalSpreadScale = numberSetting(displaySettings.verticalSpreadScale, 0.5);
+    const distanceBandSpan = (targetYMaxRatio - targetYMinRatio) * verticalSpreadScale;
+    const centers = [];
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      if (!marker || typeof marker.distanceNorm !== "number") {
+        continue;
+      }
+      const distanceBandCenter = targetYMaxRatio - distanceBandSpan * (1 - marker.distanceNorm);
+      centers.push(distanceBandCenter);
+    }
+    if (centers.length === 0) {
+      return 0;
+    }
+    centers.sort(function (a, b) {
+      return a - b;
+    });
+    const mid = Math.floor(centers.length / 2);
+    const median = centers.length % 2 === 0 ? (centers[mid - 1] + centers[mid]) * 0.5 : centers[mid];
+    const targetRatio = numberSetting(displaySettings.autoAlignTargetRatio, 0.52);
+    const maxShiftRatio = numberSetting(displaySettings.autoAlignMaxShiftRatio, 0.14);
+    return clamp(targetRatio - median, -maxShiftRatio, maxShiftRatio);
   }
 
   function buildMarkers() {
@@ -655,6 +687,9 @@
       };
       markerEntities.push(marker);
     }
+    const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
+    autoAlignYOffsetRatio +=
+      (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * numberSetting(displaySettings.autoAlignLerp, 0.35);
     updateScreenMarkers();
     const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
     const message =
