@@ -84,7 +84,7 @@
   const cameraFarMax = 20000000;
   const tiltPitchRangeDeg = 90;
   const tiltPitchCenterDeg = 90;
-  const tiltInvert = true;
+  const tiltInvert = false;
   const tiltLayoutClamp = 0.35;
   const tiltSpreadFactor = 0.5;
   const rankScatterRatio = 0.02;
@@ -438,6 +438,69 @@
     targetScene.addEventListener("touchstart", onBackgroundTap, { passive: true });
   }
 
+  function bindDragElasticYawReset(targetScene) {
+    const camEntity = targetScene.querySelector("#arCamera");
+    if (!camEntity) {
+      return;
+    }
+    let dragging = false;
+    let restoring = false;
+    let restoreVelocity = 0;
+    const spring = 0.02;
+    const damping = 0.82;
+
+    function getYawObject() {
+      const lookControls = camEntity.components && camEntity.components["look-controls"];
+      return lookControls && lookControls.yawObject ? lookControls.yawObject : null;
+    }
+
+    function startRestoreLoop() {
+      if (restoring) {
+        return;
+      }
+      restoring = true;
+      const step = function () {
+        const yawObject = getYawObject();
+        if (!yawObject) {
+          restoring = false;
+          return;
+        }
+        if (!dragging) {
+          const yaw = yawObject.rotation.y;
+          restoreVelocity += -yaw * spring;
+          restoreVelocity *= damping;
+          yawObject.rotation.y = yaw + restoreVelocity;
+          if (Math.abs(yawObject.rotation.y) < 0.0002 && Math.abs(restoreVelocity) < 0.0002) {
+            yawObject.rotation.y = 0;
+            restoreVelocity = 0;
+            restoring = false;
+            return;
+          }
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    function onDragStart() {
+      dragging = true;
+      restoreVelocity = 0;
+      startRestoreLoop();
+    }
+
+    function onDragEnd() {
+      dragging = false;
+      startRestoreLoop();
+    }
+
+    targetScene.addEventListener("touchstart", onDragStart, { passive: true });
+    targetScene.addEventListener("touchend", onDragEnd, { passive: true });
+    targetScene.addEventListener("touchcancel", onDragEnd, { passive: true });
+    targetScene.addEventListener("mousedown", onDragStart);
+    targetScene.addEventListener("mouseup", onDragEnd);
+    targetScene.addEventListener("mouseleave", onDragEnd);
+  }
+
   function createScene() {
     arRoot.innerHTML =
       '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
@@ -448,6 +511,7 @@
       "</a-scene>";
     scene = document.getElementById("arScene");
     bindSceneEvents(scene);
+    bindDragElasticYawReset(scene);
   }
 
   function haversineMeters(lat1, lon1, lat2, lon2) {
@@ -695,6 +759,8 @@
     const iterations = 8;
     const pushStrength = 1.0;
     const maxOffset = 140;
+    const overlapOffsetLerp = 0.14;
+    const overlapReleaseLerp = 0.06;
     const minY = -offscreenMargin;
     const maxY = viewportHeight + offscreenMargin;
     const resolvedY = new Array(markers.length);
@@ -745,7 +811,12 @@
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
       marker.overlapOffsetX = 0;
-      marker.overlapOffsetY = clamp(resolvedY[i] - marker.screenY, -maxOffset, maxOffset);
+      const targetOffsetY = clamp(resolvedY[i] - marker.screenY, -maxOffset, maxOffset);
+      const lerp = marker.overlapLevel > 0 ? overlapOffsetLerp : overlapReleaseLerp;
+      marker.overlapOffsetY += (targetOffsetY - marker.overlapOffsetY) * lerp;
+      if (Math.abs(marker.overlapOffsetY) < 0.1) {
+        marker.overlapOffsetY = 0;
+      }
     }
   }
 
