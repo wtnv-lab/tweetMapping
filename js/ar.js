@@ -3,17 +3,36 @@
   const centerPanel = document.getElementById("centerPanel");
   const launchStatus = document.getElementById("launchStatus");
   const startButton = document.getElementById("startButton");
+  const debugSwitchWrap = document.getElementById("debugSwitchWrap");
+  const debugToggle = document.getElementById("debugToggle");
   const tweetCard = document.getElementById("tweetCard");
   const tweetBody = document.getElementById("tweetBody");
   const tweetMeta = document.getElementById("tweetMeta");
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
-
-  const tweetDataUrl = "data/czml/tweets.json";
-  const twitterIconUrl = "data/icon/flags/twitter.png";
-  const locationPollIntervalMs = 5000;
-  const displaySettings = window.AR_DISPLAY_SETTINGS || {};
+  const arConfig = window.AR_CONFIG || {};
+  const geolocationConfig = arConfig.geolocation || {};
+  const debugConfig = arConfig.debug || {};
+  const debugTestLocation = debugConfig.testLocation || {};
+  const tweetDataUrl = arConfig.tweetDataUrl || "data/czml/tweets.json";
+  const twitterIconUrl = arConfig.twitterIconUrl || "data/icon/flags/twitter.png";
+  const locationPollIntervalMs =
+    typeof arConfig.locationPollIntervalMs === "number" && Number.isFinite(arConfig.locationPollIntervalMs)
+      ? arConfig.locationPollIntervalMs
+      : 5000;
+  let useTestLocation = !!debugConfig.useTestLocationByDefault;
+  // DEBUGスイッチON時に現在地として使う固定座標（既定: 東京タワー）。
+  const testLocation = {
+    lat: typeof debugTestLocation.lat === "number" && Number.isFinite(debugTestLocation.lat) ? debugTestLocation.lat : 35.65858,
+    lon: typeof debugTestLocation.lon === "number" && Number.isFinite(debugTestLocation.lon) ? debugTestLocation.lon : 139.745433,
+  };
+  const permissionCacheKey = arConfig.permissionCacheKey || "tweetMappingArPermissionGrantedAt";
+  const permissionCacheWindowMs =
+    typeof arConfig.permissionCacheWindowMs === "number" && Number.isFinite(arConfig.permissionCacheWindowMs)
+      ? arConfig.permissionCacheWindowMs
+      : 30 * 24 * 60 * 60 * 1000;
+  const displaySettings = arConfig.displaySettings || {};
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
@@ -48,8 +67,81 @@
   let lastBuildAt = 0;
   let buildTimer = null;
   let markerRenderFrame = null;
+  let arStarting = false;
+  let arActive = false;
+  let autoAlignYOffsetRatio = 0;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
+
+  function readPermissionGrantedAt() {
+    try {
+      const raw = window.localStorage ? window.localStorage.getItem(permissionCacheKey) : null;
+      const ts = Number(raw);
+      return Number.isFinite(ts) ? ts : 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  function markPermissionGrantedNow() {
+    try {
+      if (!window.localStorage) {
+        return;
+      }
+      window.localStorage.setItem(permissionCacheKey, String(Date.now()));
+    } catch (error) {
+      // Ignore storage errors (private mode or restricted context).
+    }
+  }
+
+  function isPermissionCacheFresh() {
+    const grantedAt = readPermissionGrantedAt();
+    if (!grantedAt) {
+      return false;
+    }
+    return Date.now() - grantedAt <= permissionCacheWindowMs;
+  }
+
+  function queryPermissionState(name) {
+    if (!navigator.permissions || typeof navigator.permissions.query !== "function") {
+      return Promise.resolve("unknown");
+    }
+    try {
+      return navigator.permissions
+        .query({ name: name })
+        .then(function (result) {
+          return result && result.state ? result.state : "unknown";
+        })
+        .catch(function () {
+          return "unknown";
+        });
+    } catch (error) {
+      return Promise.resolve("unknown");
+    }
+  }
+
+  function getPermissionSnapshot() {
+    return Promise.all([
+      queryPermissionState("geolocation"),
+      queryPermissionState("camera"),
+    ]).then(function (states) {
+      return {
+        geolocation: states[0],
+        camera: states[1],
+      };
+    });
+  }
+
+  function shouldAutoStartFromPermissions(snapshot) {
+    const geoState = snapshot && snapshot.geolocation ? snapshot.geolocation : "unknown";
+    const camState = snapshot && snapshot.camera ? snapshot.camera : "unknown";
+    const hasDenied = geoState === "denied" || camState === "denied";
+    if (hasDenied) {
+      return false;
+    }
+    const bothGranted = geoState === "granted" && camState === "granted";
+    return bothGranted || isPermissionCacheFresh();
+  }
 
   function scheduleBuild(forceNow) {
     if (forceNow) {
@@ -92,13 +184,38 @@
     launchStatus.textContent = message;
   }
 
+  function updateDebugToggleState() {
+    if (debugSwitchWrap) {
+      debugSwitchWrap.style.display = debugConfig.showToggle === false ? "none" : "inline-flex";
+    }
+    if (!debugToggle) {
+      return;
+    }
+    debugToggle.checked = !!useTestLocation;
+  }
+
+  function stopLocationPolling() {
+    if (locationPollTimer !== null) {
+      clearInterval(locationPollTimer);
+      locationPollTimer = null;
+    }
+  }
+
+  function restartLocationPolling() {
+    stopLocationPolling();
+    lastBuildPosition = null;
+    startLocationPolling();
+  }
+
   function hideLaunchPanel() {
     centerPanel.classList.add("hidden");
   }
 
   function bindSceneEvents(targetScene) {
     targetScene.addEventListener("loaded", function () {
-      setStatus("ARシーン起動完了。位置情報を待っています...");
+      if (!currentPosition) {
+        setStatus("ARシーン起動完了。位置情報を待っています...");
+      }
     });
     const onBackgroundTap = function (event) {
       if (!isTweetHitTarget(event.target)) {
@@ -147,6 +264,15 @@
     return Math.min(max, Math.max(min, value));
   }
 
+  function toPerspectiveNorm(verticalNorm) {
+    const t = clamp(verticalNorm, 0, 1);
+    const perspectiveStrength = Math.max(0, numberSetting(displaySettings.rankPerspectiveStrength, 2.5));
+    if (perspectiveStrength <= 0) {
+      return t;
+    }
+    return Math.log(1 + perspectiveStrength * t) / Math.log(1 + perspectiveStrength);
+  }
+
   function clearMarkers() {
     clearSelection();
     if (buildTimer !== null) {
@@ -160,6 +286,7 @@
       }
     }
     markerEntities = [];
+    autoAlignYOffsetRatio = 0;
   }
 
   function toLabel(text) {
@@ -271,6 +398,8 @@
     const height = window.innerHeight;
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i];
+      const verticalNorm =
+        typeof marker.verticalNorm === "number" ? marker.verticalNorm : marker.distanceNorm;
       const screenPos = projectToScreen(marker.worldPosition, cameraObj, width, height);
       if (!screenPos) {
         marker.root.style.display = "none";
@@ -285,27 +414,19 @@
         (marker.laneOffset * numberSetting(displaySettings.yScatterLaneWeight, 17.5) +
           marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
         (numberSetting(displaySettings.yScatterBaseFactor, 0.4375) +
-          marker.distanceNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
-      const yScatterMagnitude = Math.abs(rawYScatter);
-      const yScatter =
-        marker.distanceNorm <= 0.5
-          ? -yScatterMagnitude * numberSetting(displaySettings.yScatterUpMultiplier, 2.76)
-          : yScatterMagnitude * numberSetting(displaySettings.yScatterDownMultiplier, 0.82);
-      const distanceYOffset =
-        (marker.distanceNorm - 0.5) * height * numberSetting(displaySettings.distanceYOffsetFactor, 0.56);
+          verticalNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
       const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
-      const tiltPivotY = height * numberSetting(displaySettings.tiltPivotRatio, 0.35);
-      const tiltReducedY =
-        tiltPivotY + (screenPos.y - tiltPivotY) * numberSetting(displaySettings.tiltReduceFactor, 0.52);
-      const limitedTiltY = clamp(
-        tiltReducedY,
-        tiltPivotY - height * numberSetting(displaySettings.tiltClampUpRatio, 0.14),
-        tiltPivotY + height * numberSetting(displaySettings.tiltClampDownRatio, 0.14)
-      );
+      const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
+      const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
+      const perspectiveNorm = toPerspectiveNorm(verticalNorm);
+      const yLinearBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
+      const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
+      const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const targetY = clamp(
-        limitedTiltY + distanceYOffset + yScatter + arFieldYOffsetPx,
-        height * numberSetting(displaySettings.targetYMinRatio, -0.12),
-        height * numberSetting(displaySettings.targetYMaxRatio, 0.7)
+        yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
+        height * topRatio,
+        height * bottomRatio
       );
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
@@ -347,6 +468,45 @@
       updateScreenMarkers();
     };
     markerRenderFrame = requestAnimationFrame(tick);
+  }
+
+  function computeAutoAlignYOffsetRatio(markers) {
+    if (!numberSetting(displaySettings.autoAlignEnabled, 1) || !Array.isArray(markers) || markers.length === 0) {
+      return 0;
+    }
+    const targetYMinRatio = numberSetting(displaySettings.targetYMinRatio, -0.12);
+    const targetYMaxRatio = numberSetting(displaySettings.targetYMaxRatio, 0.7);
+    const verticalSpreadScale = numberSetting(displaySettings.verticalSpreadScale, 0.5);
+    const distanceBandSpan = (targetYMaxRatio - targetYMinRatio) * verticalSpreadScale;
+    const centers = [];
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      if (!marker) {
+        continue;
+      }
+      const verticalNorm =
+        typeof marker.verticalNorm === "number"
+          ? marker.verticalNorm
+          : typeof marker.distanceNorm === "number"
+            ? marker.distanceNorm
+            : null;
+      if (verticalNorm === null) {
+        continue;
+      }
+      const distanceBandCenter = targetYMaxRatio - distanceBandSpan * (1 - verticalNorm);
+      centers.push(distanceBandCenter);
+    }
+    if (centers.length === 0) {
+      return 0;
+    }
+    centers.sort(function (a, b) {
+      return a - b;
+    });
+    const mid = Math.floor(centers.length / 2);
+    const median = centers.length % 2 === 0 ? (centers[mid - 1] + centers[mid]) * 0.5 : centers[mid];
+    const targetRatio = numberSetting(displaySettings.autoAlignTargetRatio, 0.52);
+    const maxShiftRatio = numberSetting(displaySettings.autoAlignMaxShiftRatio, 0.14);
+    return clamp(targetRatio - median, -maxShiftRatio, maxShiftRatio);
   }
 
   function buildMarkers() {
@@ -401,19 +561,18 @@
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
-    const selectedRangeMeters = Math.max(1, farthestDistance !== null ? farthestDistance : 1);
     const headingNow = deviceHeading === null ? 0 : deviceHeading;
     const laneSlots = new Map();
     const clusterSlots = new Map();
-    function directedOffsetUnits(indexInGroup, ratio) {
+    function directedOffsetUnits(indexInGroup, verticalNorm) {
       if (indexInGroup === 0) {
         return 0;
       }
-      // Near tweets: spread upward only. Far tweets: spread downward only.
-      if (ratio <= 0.45) {
+      // 直近100件内の順位（分位）で上下方向を決める。
+      if (verticalNorm <= 0.45) {
         return indexInGroup;
       }
-      if (ratio >= 0.7) {
+      if (verticalNorm >= 0.7) {
         return -indexInGroup;
       }
       const level = Math.floor((indexInGroup + 1) / 2);
@@ -433,7 +592,7 @@
       const projected = distance;
       const x = Math.sin(relativeRad) * projected;
       const z = -Math.cos(relativeRad) * projected;
-      const ratio = clamp(distance / selectedRangeMeters, 0, 1);
+      const verticalNorm = count <= 1 ? 0 : i / (count - 1);
       const distanceNorm = clamp((distance - (nearestDistance !== null ? nearestDistance : distance)) / distanceSpan, 0, 1);
       const laneKey = String(Math.round(relativeDeg / laneStepDeg));
       const laneIndex = laneSlots.get(laneKey) || 0;
@@ -444,8 +603,8 @@
       // Keep vertical offsets small; distance is represented by true depth.
       const baseY = numberSetting(displaySettings.markerBaseY, 1.8);
       const spreadStep = numberSetting(displaySettings.markerSpreadStep, 0.45);
-      const laneOffset = directedOffsetUnits(laneIndex, ratio);
-      const clusterOffset = directedOffsetUnits(clusterIndex, ratio);
+      const laneOffset = directedOffsetUnits(laneIndex, verticalNorm);
+      const clusterOffset = directedOffsetUnits(clusterIndex, verticalNorm);
       const densityBoost =
         1 +
         Math.min(
@@ -467,10 +626,7 @@
         numberSetting(displaySettings.iconSizeMax, 86)
       );
       const label = toLabel(t.text);
-      const labelFontNorm = Math.pow(
-        distanceNorm,
-        numberSetting(displaySettings.labelFontCurveExponent, 1.35)
-      );
+      const labelFontNorm = verticalNorm;
       const labelFontPx = Math.round(
         clamp(
           numberSetting(displaySettings.labelFontMax, 44) -
@@ -479,15 +635,16 @@
           numberSetting(displaySettings.labelFontMax, 44)
         )
       );
+      const opacityNorm = toPerspectiveNorm(verticalNorm);
       const iconOpacity = clamp(
         numberSetting(displaySettings.iconOpacityStart, 0.98) -
-          distanceNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
+          opacityNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
         numberSetting(displaySettings.iconOpacityMin, 0.36),
         numberSetting(displaySettings.iconOpacityMax, 0.98)
       );
       const labelOpacity = clamp(
         numberSetting(displaySettings.labelOpacityStart, 0.99) -
-          distanceNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
+          opacityNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
         numberSetting(displaySettings.labelOpacityMin, 0.31),
         numberSetting(displaySettings.labelOpacityMax, 0.99)
       );
@@ -526,7 +683,8 @@
         icon: icon,
         label: labelSpan,
         worldPosition: worldPosition,
-        ratio: ratio,
+        ratio: verticalNorm,
+        verticalNorm: verticalNorm,
         distanceNorm: distanceNorm,
         laneOffset: laneOffset,
         clusterOffset: clusterOffset,
@@ -539,6 +697,9 @@
       };
       markerEntities.push(marker);
     }
+    const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
+    autoAlignYOffsetRatio +=
+      (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * numberSetting(displaySettings.autoAlignLerp, 0.35);
     updateScreenMarkers();
     const nearestText = nearestDistance !== null ? ", 最短 " + nearestDistance + "m" : "";
     const message =
@@ -662,6 +823,26 @@
   }
 
   function startLocationPolling() {
+    if (useTestLocation) {
+      const mockPosition = function () {
+        currentPosition = {
+          coords: {
+            latitude: testLocation.lat,
+            longitude: testLocation.lon,
+            accuracy: 10,
+          },
+          timestamp: Date.now(),
+        };
+        if (!lastBuildPosition) {
+          setStatus("テスト位置（東京タワー）を使用中...");
+        }
+        maybeRebuildMarkers();
+      };
+      mockPosition();
+      locationPollTimer = setInterval(mockPosition, locationPollIntervalMs);
+      return;
+    }
+
     if (!navigator.geolocation) {
       setStatus("この端末は位置情報に対応していません。");
       return;
@@ -671,15 +852,25 @@
       navigator.geolocation.getCurrentPosition(
         function (position) {
           currentPosition = position;
+          markPermissionGrantedNow();
+          if (!lastBuildPosition) {
+            setStatus("現在地を取得しました。ツイートを表示しています...");
+          }
           maybeRebuildMarkers();
         },
         function (error) {
           setStatus("位置情報の取得に失敗: " + error.message);
         },
         {
-          enableHighAccuracy: false,
-          maximumAge: locationPollIntervalMs,
-          timeout: 30000,
+          enableHighAccuracy: !!geolocationConfig.enableHighAccuracy,
+          maximumAge:
+            typeof geolocationConfig.maximumAgeMs === "number" && Number.isFinite(geolocationConfig.maximumAgeMs)
+              ? geolocationConfig.maximumAgeMs
+              : locationPollIntervalMs,
+          timeout:
+            typeof geolocationConfig.timeoutMs === "number" && Number.isFinite(geolocationConfig.timeoutMs)
+              ? geolocationConfig.timeoutMs
+              : 30000,
         }
       );
     };
@@ -688,11 +879,20 @@
     locationPollTimer = setInterval(pollPosition, locationPollIntervalMs);
   }
 
-  function startAR() {
+  function startAR(options) {
+    const opts = options || {};
+    const autoStart = !!opts.autoStart;
+    if (typeof opts.useTestLocation === "boolean") {
+      useTestLocation = opts.useTestLocation;
+    }
+    if (arStarting) {
+      return;
+    }
     if (!isMobileOrTablet) {
       setLaunchStatus("AR版はスマートフォン・タブレット専用です。地図版をご利用ください。");
       return;
     }
+    arStarting = true;
     centerPanel.classList.add("is-loading");
     setLaunchStatus("データを読み込み中...");
     startButton.disabled = true;
@@ -700,6 +900,7 @@
     const orientationPermissionPromise = requestOrientationPermission();
     Promise.all([orientationPermissionPromise, requestCameraPermission()])
       .then(function () {
+        markPermissionGrantedNow();
         setLaunchStatus("ツイートデータを読み込んでいます...");
         return loadTweets();
       })
@@ -709,6 +910,7 @@
         bindOrientationDiagnostics();
         startLocationPolling();
         startMarkerRenderLoop();
+        arActive = true;
         setTimeout(function () {
           hideLaunchPanel();
         }, 450);
@@ -719,8 +921,14 @@
         }, 5000);
       })
       .catch(function (error) {
+        arStarting = false;
+        arActive = false;
         centerPanel.classList.remove("is-loading");
-        setLaunchStatus("開始できませんでした: " + error.message);
+        if (autoStart) {
+          setLaunchStatus("自動開始できませんでした。開始ボタンを押してください。(" + error.message + ")");
+        } else {
+          setLaunchStatus("開始できませんでした: " + error.message);
+        }
         startButton.disabled = false;
         startButton.textContent = "開始";
         startButton.style.display = "inline-flex";
@@ -732,10 +940,7 @@
       clearTimeout(buildTimer);
       buildTimer = null;
     }
-    if (locationPollTimer !== null) {
-      clearInterval(locationPollTimer);
-      locationPollTimer = null;
-    }
+    stopLocationPolling();
     if (markerRenderFrame !== null) {
       cancelAnimationFrame(markerRenderFrame);
       markerRenderFrame = null;
@@ -750,9 +955,49 @@
     cameraStream = null;
   });
 
+  if (debugToggle) {
+    updateDebugToggleState();
+    debugToggle.addEventListener("change", function () {
+      useTestLocation = !!debugToggle.checked;
+      updateDebugToggleState();
+      if (arActive) {
+        restartLocationPolling();
+        setStatus(
+          useTestLocation
+            ? "デバッグモードに切替: 東京タワー付近を現在地として使用中"
+            : "通常モードに切替: 端末の現在地を使用中"
+        );
+      } else {
+        setLaunchStatus(
+          useTestLocation
+            ? "デバッグモード: 東京タワー付近で開始します"
+            : "通常モード: 端末の現在地で開始します"
+        );
+      }
+    });
+  }
+
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");
     startButton.disabled = true;
+  } else {
+    setLaunchStatus("カメラ・位置情報の権限状態を確認しています...");
+    getPermissionSnapshot().then(function (snapshot) {
+      if (!shouldAutoStartFromPermissions(snapshot)) {
+        const geoState = snapshot.geolocation || "unknown";
+        const camState = snapshot.camera || "unknown";
+        if (geoState === "denied" || camState === "denied") {
+          setLaunchStatus("ブラウザ設定でカメラ・位置情報の許可を有効にしてください。");
+        } else {
+          setLaunchStatus("カメラ・位置情報を許可してください");
+        }
+        return;
+      }
+      setLaunchStatus("前回の許可設定を利用して自動開始しています...");
+      startAR({ autoStart: true });
+    });
   }
-  startButton.addEventListener("click", startAR);
+  startButton.addEventListener("click", function () {
+    startAR({ autoStart: false });
+  });
 })();
