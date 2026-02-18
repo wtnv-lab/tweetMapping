@@ -60,6 +60,7 @@
   let cameraStream = null;
   let locationPollTimer = null;
   let deviceHeading = null;
+  let devicePitchDeg = null;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
@@ -419,14 +420,27 @@
       const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
       const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
-      const yLinearBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 45));
+      const tiltInvert = !!displaySettings.tiltInvert;
+      const tiltRaw = typeof devicePitchDeg === "number" ? devicePitchDeg : 0;
+      const tiltNorm = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
+      const tiltMagnitude = Math.abs(tiltNorm);
+      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * tiltNorm;
+      const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
+      const yBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
+      const anchorBase = tiltNorm >= 0 ? height * topRatio : height * bottomRatio;
+      const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
       const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
+      const baseSpan = height * (bottomRatio - topRatio);
+      const extraSpan = baseSpan * (tiltSpread - 1);
+      const clampMin = tiltNorm >= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
+      const clampMax = tiltNorm >= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
       const targetY = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
-        height * topRatio,
-        height * bottomRatio
+        clampMin,
+        clampMax
       );
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
@@ -792,6 +806,9 @@
           deviceHeading = event.webkitCompassHeading;
         } else if (event.absolute && typeof event.alpha === "number") {
           deviceHeading = (360 - event.alpha) % 360;
+        }
+        if (typeof event.beta === "number") {
+          devicePitchDeg = event.beta;
         }
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
