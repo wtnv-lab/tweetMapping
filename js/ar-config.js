@@ -75,6 +75,7 @@ window.AR_CONFIG = {
     rankPerspectiveStrength: 3.0,
     rankScatterRatio: 0.02,
     tiltPitchRangeDeg: 45,
+    tiltPitchOffsetDeg: 0,
     tiltShiftRatio: 0.06,
     tiltSpreadFactor: 0.5,
     tiltInvert: false,

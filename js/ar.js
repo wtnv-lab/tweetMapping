@@ -73,6 +73,8 @@
   let autoAlignYOffsetRatio = 0;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
+  const cameraForwardBase = new THREE.Vector3(0, 0, -1);
+  const cameraForwardWorld = new THREE.Vector3();
 
   function readPermissionGrantedAt() {
     try {
@@ -265,6 +267,28 @@
     return Math.min(max, Math.max(min, value));
   }
 
+  function readDevicePitchDeg(event) {
+    const beta = typeof event.beta === "number" ? event.beta : null;
+    const gamma = typeof event.gamma === "number" ? event.gamma : null;
+    if (beta === null && gamma === null) {
+      return null;
+    }
+    let angle = 0;
+    if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === "number") {
+      angle = window.screen.orientation.angle;
+    } else if (typeof window.orientation === "number") {
+      angle = window.orientation;
+    }
+    const normalized = ((angle % 360) + 360) % 360;
+    if (normalized === 90) {
+      return gamma !== null ? gamma : beta;
+    }
+    if (normalized === 270) {
+      return gamma !== null ? -gamma : beta;
+    }
+    return beta;
+  }
+
   function toPerspectiveNorm(verticalNorm) {
     const t = clamp(verticalNorm, 0, 1);
     const perspectiveStrength = Math.max(0, numberSetting(displaySettings.rankPerspectiveStrength, 2.5));
@@ -397,6 +421,8 @@
     cameraObj.updateMatrixWorld(true);
     const width = window.innerWidth;
     const height = window.innerHeight;
+    cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    const cameraPitchDeg = Math.asin(clamp(cameraForwardWorld.y, -1, 1)) * (180 / Math.PI);
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i];
       const verticalNorm =
@@ -421,8 +447,14 @@
       const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
       const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 45));
+      const tiltOffsetDeg = numberSetting(displaySettings.tiltPitchOffsetDeg, 0);
       const tiltInvert = !!displaySettings.tiltInvert;
-      const tiltRaw = typeof devicePitchDeg === "number" ? devicePitchDeg : 0;
+      const tiltBase = Number.isFinite(cameraPitchDeg)
+        ? cameraPitchDeg
+        : typeof devicePitchDeg === "number"
+          ? devicePitchDeg
+          : 0;
+      const tiltRaw = tiltBase - tiltOffsetDeg;
       const tiltNorm = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
       const tiltMagnitude = Math.abs(tiltNorm);
       const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * tiltNorm;
@@ -807,8 +839,9 @@
         } else if (event.absolute && typeof event.alpha === "number") {
           deviceHeading = (360 - event.alpha) % 360;
         }
-        if (typeof event.beta === "number") {
-          devicePitchDeg = event.beta;
+        const pitchDeg = readDevicePitchDeg(event);
+        if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
+          devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
         }
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
