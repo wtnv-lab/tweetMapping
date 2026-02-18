@@ -84,7 +84,7 @@
   const cameraFarMax = 20000000;
   const tiltPitchRangeDeg = 90;
   const tiltPitchCenterDeg = 90;
-  const tiltInvert = false;
+  const tiltInvert = true;
   const tiltLayoutClamp = 0.35;
   const tiltSpreadFactor = 0.5;
   const rankScatterRatio = 0.02;
@@ -167,6 +167,10 @@
   let arStarting = false;
   let arActive = false;
   let autoAlignYOffsetRatio = 0;
+  let arCameraEntity = null;
+  let arCameraObject = null;
+  let overlapSolveFrameCounter = 0;
+  let markerLayerSelectionBound = false;
   let locationSourceMode = "device";
   let selectedCityIndex = -1;
   let locationSourceButton = null;
@@ -439,6 +443,39 @@
     targetScene.addEventListener("touchstart", onBackgroundTap, { passive: true });
   }
 
+  function getArCameraObject() {
+    if (!scene) {
+      return null;
+    }
+    if (!arCameraEntity || !arCameraEntity.isConnected) {
+      arCameraEntity = scene.querySelector("#arCamera");
+      arCameraObject = null;
+    }
+    if (!arCameraEntity) {
+      return null;
+    }
+    if (!arCameraObject) {
+      arCameraObject = arCameraEntity.getObject3D("camera") || null;
+    }
+    return arCameraObject;
+  }
+
+  function bindMarkerLayerSelection() {
+    if (markerLayerSelectionBound || !markerLayer) {
+      return;
+    }
+    markerLayerSelectionBound = true;
+    const onSelectFromLayer = function (event) {
+      const hit = event.target && event.target.closest ? event.target.closest(".screen-marker") : null;
+      if (!hit || !hit.__markerRef) {
+        return;
+      }
+      selectMarker(hit.__markerRef);
+    };
+    markerLayer.addEventListener("click", onSelectFromLayer);
+    markerLayer.addEventListener("touchstart", onSelectFromLayer, { passive: true });
+  }
+
   function bindDragElasticYawReset(targetScene) {
     const camEntity = targetScene.querySelector("#arCamera");
     if (!camEntity) {
@@ -511,7 +548,10 @@
       '<a-entity id="arCamera" camera="fov: 108; near: 0.05; far: 12000" look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .tweet-hit; far: 12000" position="0 1.6 0"></a-entity>' +
       "</a-scene>";
     scene = document.getElementById("arScene");
+    arCameraEntity = null;
+    arCameraObject = null;
     bindSceneEvents(scene);
+    bindMarkerLayerSelection();
     bindDragElasticYawReset(scene);
   }
 
@@ -599,6 +639,7 @@
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i].root;
       if (marker && marker.parentNode) {
+        marker.__markerRef = null;
         marker.parentNode.removeChild(marker);
       }
     }
@@ -716,14 +757,7 @@
   }
 
   function updateCameraFarByDistance(farthestDistanceMeters) {
-    if (!scene) {
-      return;
-    }
-    const camEntity = scene.querySelector("#arCamera");
-    if (!camEntity) {
-      return;
-    }
-    const cameraObj = camEntity.getObject3D("camera");
+    const cameraObj = getArCameraObject();
     if (!cameraObj) {
       return;
     }
@@ -755,6 +789,9 @@
     const minY = -offscreenMargin;
     const maxY = viewportHeight + offscreenMargin;
     const resolvedY = new Array(markers.length);
+    const bucketWidth = 180;
+    const bucketMap = new Map();
+    const markerBucketIds = new Array(markers.length);
 
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
@@ -766,32 +803,73 @@
         marker.overlapOffsetY = 0;
       }
       resolvedY[i] = marker.screenY;
+      const bucketId = Math.floor(marker.screenX / bucketWidth);
+      markerBucketIds[i] = bucketId;
+      if (!bucketMap.has(bucketId)) {
+        bucketMap.set(bucketId, []);
+      }
+      bucketMap.get(bucketId).push(i);
     }
+    const bucketIds = Array.from(bucketMap.keys()).sort(function (a, b) {
+      return a - b;
+    });
 
     for (let iter = 0; iter < iterations; iter++) {
       let moved = false;
-      for (let i = 0; i < markers.length; i++) {
-        const a = markers[i];
-        for (let j = i + 1; j < markers.length; j++) {
-          const b = markers[j];
-          const dx = markers[j].screenX - markers[i].screenX;
-          const dy = resolvedY[j] - resolvedY[i];
-          const halfW = (a.boxWidth + b.boxWidth) * 0.5 + padding;
-          const halfH = (a.boxHeight + b.boxHeight) * 0.5 + padding;
-          const overlapX = halfW - Math.abs(dx);
-          const overlapY = halfH - Math.abs(dy);
-          if (overlapX <= 0 || overlapY <= 0) {
-            continue;
+      for (let b = 0; b < bucketIds.length; b++) {
+        const bucketId = bucketIds[b];
+        const currentIndices = bucketMap.get(bucketId) || [];
+        const nextIndices = bucketMap.get(bucketId + 1) || [];
+        for (let ai = 0; ai < currentIndices.length; ai++) {
+          const i = currentIndices[ai];
+          const a = markers[i];
+          for (let aj = ai + 1; aj < currentIndices.length; aj++) {
+            const j = currentIndices[aj];
+            const bMarker = markers[j];
+            const dx = bMarker.screenX - a.screenX;
+            const dy = resolvedY[j] - resolvedY[i];
+            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
+            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+            moved = true;
+            a.overlapLevel += 1;
+            bMarker.overlapLevel += 1;
+            const pushY = (overlapY + padding) * 0.5 * pushStrength;
+            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
+            const topIndex = aIsNearer ? i : j;
+            const bottomIndex = aIsNearer ? j : i;
+            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
           }
-          moved = true;
-          a.overlapLevel += 1;
-          b.overlapLevel += 1;
-          const pushY = (overlapY + padding) * 0.5 * pushStrength;
-          const aIsNearer = a.distanceNorm <= b.distanceNorm;
-          const topIndex = aIsNearer ? i : j;
-          const bottomIndex = aIsNearer ? j : i;
-          resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
-          resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
+          for (let nj = 0; nj < nextIndices.length; nj++) {
+            const j = nextIndices[nj];
+            const bMarker = markers[j];
+            if (markerBucketIds[j] - markerBucketIds[i] > 1) {
+              continue;
+            }
+            const dx = bMarker.screenX - a.screenX;
+            const dy = resolvedY[j] - resolvedY[i];
+            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
+            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+            moved = true;
+            a.overlapLevel += 1;
+            bMarker.overlapLevel += 1;
+            const pushY = (overlapY + padding) * 0.5 * pushStrength;
+            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
+            const topIndex = aIsNearer ? i : j;
+            const bottomIndex = aIsNearer ? j : i;
+            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
+          }
         }
       }
       if (!moved) {
@@ -815,11 +893,7 @@
     if (!scene || markerEntities.length === 0) {
       return;
     }
-    const camEntity = scene.querySelector("#arCamera");
-    if (!camEntity) {
-      return;
-    }
-    const cameraObj = camEntity.getObject3D("camera");
+    const cameraObj = getArCameraObject();
     if (!cameraObj) {
       return;
     }
@@ -861,19 +935,22 @@
       const tiltRaw = tiltBase - tiltPitchCenterDeg;
       const tiltSignedRaw = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
       const tiltSigned = clamp(tiltSignedRaw, -tiltLayoutClamp, tiltLayoutClamp);
-      const tiltMagnitude = Math.abs(tiltSigned);
-      const tiltShiftPx = height * tiltFollowShiftRatio * -tiltSigned;
+      const layoutTiltSigned = -tiltSigned;
+      const tiltMagnitude = Math.abs(layoutTiltSigned);
+      const tiltShiftPx = height * tiltFollowShiftRatio * -layoutTiltSigned;
       const tiltSpread = 1 + tiltMagnitude * tiltSpreadFactor;
       const yBase = height * (topRatio + (bottomRatio - topRatio) * verticalDistributionNorm);
-      const anchorBase = tiltSigned <= 0 ? height * topRatio : height * bottomRatio;
+      const anchorBase = layoutTiltSigned <= 0 ? height * topRatio : height * bottomRatio;
       const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
       const yScatterCapPx = height * rankScatterRatio;
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const baseSpan = height * (bottomRatio - topRatio);
       const extraSpan = baseSpan * (tiltSpread - 1);
-      const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
-      const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
+      const clampMin =
+        layoutTiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
+      const clampMax =
+        layoutTiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
       const rankedYBase = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         clampMin,
@@ -896,7 +973,23 @@
     }
 
     if (overlapRepulsionEnabled) {
-      resolveMarkerOverlaps(layoutCandidates, width, height);
+      const overlapCandidates = [];
+      for (let i = 0; i < layoutCandidates.length; i++) {
+        const marker = layoutCandidates[i];
+        if (
+          marker.screenX < -offscreenMargin * 2 ||
+          marker.screenX > width + offscreenMargin * 2 ||
+          marker.screenY < -offscreenMargin * 2 ||
+          marker.screenY > height + offscreenMargin * 2
+        ) {
+          continue;
+        }
+        overlapCandidates.push(marker);
+      }
+      overlapSolveFrameCounter += 1;
+      if (overlapSolveFrameCounter % 3 === 0 && overlapCandidates.length > 1) {
+        resolveMarkerOverlaps(overlapCandidates, width, height);
+      }
     }
 
     for (let i = 0; i < layoutCandidates.length; i++) {
@@ -1149,13 +1242,6 @@
       labelSpan.style.opacity = labelOpacity.toFixed(2);
       root.appendChild(labelSpan);
 
-      const onSelect = function () {
-        selectMarker(marker);
-      };
-      root.addEventListener("click", onSelect);
-      root.addEventListener("touchstart", onSelect, { passive: true });
-      icon.addEventListener("click", onSelect);
-      labelSpan.addEventListener("click", onSelect);
       markerLayer.appendChild(root);
 
       const marker = {
@@ -1175,13 +1261,14 @@
         tweetText: t.text,
         distanceMeters: String(Math.round(distance)),
         distanceRawMeters: distance,
-        boxWidth: root.offsetWidth || 140,
-        boxHeight: root.offsetHeight || 42,
+        boxWidth: 140,
+        boxHeight: 42,
         overlapLevel: 0,
         vibrationPhase: Math.random() * Math.PI * 2,
         overlapOffsetX: 0,
         overlapOffsetY: 0,
       };
+      root.__markerRef = marker;
       markerEntities.push(marker);
     }
     const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
