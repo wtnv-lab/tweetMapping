@@ -141,7 +141,7 @@ button.cesium-infoBox-close {
     position: absolute;
     top: calc(8px + env(safe-area-inset-top));
     right: 8px;
-    z-index: 10005;
+    z-index: 10001;
     opacity: 0.8;
 }
 
@@ -149,7 +149,7 @@ button.cesium-infoBox-close {
     position: absolute;
     top: calc(84px + env(safe-area-inset-top));
     right: 8px;
-    z-index: 10005;
+    z-index: 10001;
     opacity: 0.9;
     width: 36px;
     height: 36px;
@@ -177,6 +177,7 @@ button.cesium-infoBox-close {
     position: absolute;
     top: calc(46px + env(safe-area-inset-top));
     right: 8px;
+    z-index: 10001;
     opacity: 0.9;
 }
 
