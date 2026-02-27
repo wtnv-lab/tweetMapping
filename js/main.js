@@ -33,12 +33,16 @@
   const blackOutDiv = document.getElementById("blackOut");
   const loadingDiv = document.getElementById("twCounter");
   const tweetMessageDiv = document.getElementById("tweetMessage");
+  const geoButtonDiv = document.getElementById("buttonGeo");
 
   let viewer;
   let photogrammetryTilesetPromise = null;
   let photogrammetryTileset = null;
   let tweetDisplayToneEnabled = false;
   let baseImageryLayer = null;
+  let userLocationPointCollection = null;
+  let userLocationGlowPoint = null;
+  let userLocationCorePoint = null;
 
   const baseBrightnessDefault = 1.0;
   const baseBrightnessTweetDisplay = 0.5;
@@ -46,6 +50,18 @@
   const tweetTileIndexUrl = "data/czml/tweet-tiles/index.json";
   const tweetSearchIndexUrl = "data/czml/tweet-tiles/search.json";
   const legacyTweetJsonUrl = "data/czml/tweets.json";
+  const arReturnLocationKey = "tweetMappingArReturnLocation";
+  const arReturnLocationTtlMs = 10 * 60 * 1000;
+  const arReturnViewHeightMeters = 2000.0;
+  const trackingViewHeightMeters = 2000.0;
+  const trackingMarkerHeightMeters = 20.0;
+  const trackingGeoOptions = {
+    enableHighAccuracy: false,
+    maximumAge: 15000,
+    timeout: 20000,
+  };
+  const trackingCameraUpdateIntervalMs = 5000;
+  const trackingCameraUpdateMinDistanceMeters = 25;
 
   const tweetTextById = new Map();
   const renderedTweetById = new Map();
@@ -67,7 +83,13 @@
   let cullingEnabled = false;
   let cullTimer = null;
   let tileLoadTimer = null;
+  let locationTrackingEnabled = false;
+  let locationWatchId = null;
+  let lastTrackingCameraUpdateAt = 0;
+  let lastTrackingCameraPosition = null;
   const isSmartphone = detectSmartphoneContext();
+  const isArReturnNavigation = detectArReturnNavigation();
+  const arReturnLocation = consumeArReturnLocation();
   const cullMarginPx = 32;
   const tileLoadDebounceMs = 120;
   const tilePrefetchMargin = 1;
@@ -190,7 +212,7 @@
       // Start photogrammetry loading as early as possible to reduce zoom-in lag.
       loadPhotogrammetry();
     }
-    openingSequence();
+    openingSequence(arReturnLocation);
   }
 
   function applyTweetDisplayTone() {
@@ -206,9 +228,22 @@
     viewer.scene.requestRender();
   }
 
-  function openingSequence() {
+  function openingSequence(initialLocation) {
     fadeInOut(blackOutDiv, 0);
     fadeInOut(loadingDiv, 0);
+
+    if (initialLocation || isArReturnNavigation) {
+      $(".titleScreen").remove();
+      if (initialLocation) {
+        setViewToCoordinates(initialLocation.lon, initialLocation.lat);
+      }
+      fadeInOut(blackOutDiv, 1);
+      fadeInOut(loadingDiv, 1);
+      loadTweets();
+      viewer.scene.globe.show = isSmartphone;
+      startLocationTracking();
+      return;
+    }
 
     Promise.resolve()
       .then(function () {
@@ -256,6 +291,68 @@
           }, 500);
         });
       });
+  }
+
+  function consumeArReturnLocation() {
+    const queryLocation = consumeArReturnLocationFromQuery();
+    if (queryLocation) {
+      return queryLocation;
+    }
+    if (!window.sessionStorage) {
+      return null;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(arReturnLocationKey);
+      if (!raw) {
+        return null;
+      }
+      window.sessionStorage.removeItem(arReturnLocationKey);
+      const parsed = JSON.parse(raw);
+      const lat = Number(parsed && parsed.lat);
+      const lon = Number(parsed && parsed.lon);
+      const timestamp = Number(parsed && parsed.timestamp);
+      const isFresh = Number.isFinite(timestamp) && Date.now() - timestamp <= arReturnLocationTtlMs;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !isFresh) {
+        return null;
+      }
+      return { lat: lat, lon: lon };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function detectArReturnNavigation() {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      return params.get("ar_return") === "1";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function consumeArReturnLocationFromQuery() {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      const lat = Number(params.get("ar_return_lat"));
+      const lon = Number(params.get("ar_return_lon"));
+      const timestamp = Number(params.get("ar_return_ts"));
+      const hasLat = Number.isFinite(lat);
+      const hasLon = Number.isFinite(lon);
+      if (!hasLat || !hasLon) {
+        return null;
+      }
+      const hasTimestamp = Number.isFinite(timestamp);
+      if (hasTimestamp && Date.now() - timestamp > arReturnLocationTtlMs) {
+        return null;
+      }
+      if (window.history && typeof window.history.replaceState === "function") {
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState(null, "", cleanUrl);
+      }
+      return { lat: lat, lon: lon };
+    } catch (error) {
+      return null;
+    }
   }
 
   function loadPhotogrammetry() {
@@ -646,7 +743,11 @@
     setTimeout(function () {
       fadeInOut(blackOutDiv, 0);
       fadeInOut(loadingDiv, 0);
-      changeViewPoint(2, 3);
+      if (!arReturnLocation && !isArReturnNavigation) {
+        changeViewPoint(2, 3);
+      } else {
+        viewer.scene.requestRender();
+      }
     }, 1000);
 
     setupVisibilityCulling();
@@ -756,15 +857,166 @@
   }
 
   function flyToMyLocation() {
-    function fly(position) {
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(position.coords.longitude, position.coords.latitude, 3000.0),
-        easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
-      });
+    if (locationTrackingEnabled) {
+      stopLocationTracking();
+      return;
+    }
+    startLocationTracking();
+  }
+
+  function flyToCoordinates(lon, lat) {
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, 3000.0),
+      easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
+    });
+  }
+
+  function setViewToCoordinates(lon, lat) {
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, arReturnViewHeightMeters),
+    });
+    viewer.scene.requestRender();
+  }
+
+  function setTrackingButtonState(active) {
+    if (!geoButtonDiv) {
+      return;
+    }
+    geoButtonDiv.classList.toggle("is-tracking", !!active);
+  }
+
+  function ensureUserLocationPoints() {
+    if (userLocationPointCollection) {
+      return;
+    }
+    userLocationPointCollection = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+    userLocationGlowPoint = userLocationPointCollection.add({
+      pixelSize: 30,
+      color: Cesium.Color.fromCssColorString("#ff9b2f").withAlpha(0.35),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      show: false,
+    });
+    userLocationCorePoint = userLocationPointCollection.add({
+      pixelSize: 11,
+      color: Cesium.Color.fromCssColorString("#ffd3a1").withAlpha(0.98),
+      outlineColor: Cesium.Color.fromCssColorString("#ff7a00").withAlpha(0.95),
+      outlineWidth: 2,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      show: false,
+    });
+  }
+
+  function showUserLocationPoint(lon, lat) {
+    ensureUserLocationPoints();
+    const pos = Cesium.Cartesian3.fromDegrees(lon, lat, trackingMarkerHeightMeters);
+    userLocationGlowPoint.position = pos;
+    userLocationCorePoint.position = pos;
+    userLocationGlowPoint.show = true;
+    userLocationCorePoint.show = true;
+    viewer.scene.requestRender();
+  }
+
+  function hideUserLocationPoint() {
+    if (!userLocationPointCollection) {
+      return;
+    }
+    userLocationGlowPoint.show = false;
+    userLocationCorePoint.show = false;
+    viewer.scene.requestRender();
+  }
+
+  function shouldUpdateTrackingCamera(positionCartesian, force) {
+    if (force || !lastTrackingCameraPosition) {
+      return true;
+    }
+    const elapsed = Date.now() - lastTrackingCameraUpdateAt;
+    if (elapsed < trackingCameraUpdateIntervalMs) {
+      return false;
+    }
+    const movedMeters = Cesium.Cartesian3.distance(lastTrackingCameraPosition, positionCartesian);
+    return movedMeters >= trackingCameraUpdateMinDistanceMeters;
+  }
+
+  function updateTrackingCamera(lon, lat, force) {
+    const positionCartesian = Cesium.Cartesian3.fromDegrees(lon, lat, trackingMarkerHeightMeters);
+    if (!shouldUpdateTrackingCamera(positionCartesian, force)) {
+      return;
+    }
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, trackingViewHeightMeters),
+    });
+    lastTrackingCameraPosition = Cesium.Cartesian3.clone(positionCartesian, new Cesium.Cartesian3());
+    lastTrackingCameraUpdateAt = Date.now();
+    viewer.scene.requestRender();
+  }
+
+  function handleTrackedPosition(position) {
+    if (!position || !position.coords) {
+      return;
+    }
+    const lat = Number(position.coords.latitude);
+    const lon = Number(position.coords.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+    showUserLocationPoint(lon, lat);
+    updateTrackingCamera(lon, lat, !lastTrackingCameraPosition);
+  }
+
+  function startLocationTracking() {
+    if (!navigator.geolocation || typeof navigator.geolocation.watchPosition !== "function") {
+      alert("この端末では現在地追跡を利用できません。");
+      return;
+    }
+    if (locationTrackingEnabled) {
+      return;
     }
 
-    navigator.geolocation.getCurrentPosition(fly);
+    locationTrackingEnabled = true;
+    lastTrackingCameraPosition = null;
+    lastTrackingCameraUpdateAt = 0;
+    setTrackingButtonState(true);
+
+    locationWatchId = navigator.geolocation.watchPosition(
+      function (position) {
+        handleTrackedPosition(position);
+      },
+      function (error) {
+        alert("現在地の追跡に失敗しました: " + error.message);
+        stopLocationTracking();
+      },
+      trackingGeoOptions
+    );
+
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        handleTrackedPosition(position);
+      },
+      function () {
+        // watchPositionで更新が届く可能性があるため、ここでは何もしない。
+      },
+      trackingGeoOptions
+    );
   }
+
+  function stopLocationTracking() {
+    if (!locationTrackingEnabled) {
+      return;
+    }
+    locationTrackingEnabled = false;
+    setTrackingButtonState(false);
+    if (locationWatchId !== null && navigator.geolocation && typeof navigator.geolocation.clearWatch === "function") {
+      navigator.geolocation.clearWatch(locationWatchId);
+    }
+    locationWatchId = null;
+    lastTrackingCameraPosition = null;
+    lastTrackingCameraUpdateAt = 0;
+    hideUserLocationPoint();
+  }
+
+  window.addEventListener("pagehide", function () {
+    stopLocationTracking();
+  });
 
   function textSearch() {
     $(tweetMessageDiv).hide();

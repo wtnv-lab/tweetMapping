@@ -12,6 +12,7 @@
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
+  const mapButton = document.getElementById("buttonMap");
   const arConfig = window.AR_CONFIG || {};
   const geolocationConfig = arConfig.geolocation || {};
   const locationPickerConfig = arConfig.locationPicker || {};
@@ -30,6 +31,7 @@
     lon: typeof debugTestLocation.lon === "number" && Number.isFinite(debugTestLocation.lon) ? debugTestLocation.lon : 139.745433,
   };
   const permissionCacheKey = arConfig.permissionCacheKey || "tweetMappingArPermissionGrantedAt";
+  const mapReturnLocationKey = arConfig.mapReturnLocationKey || "tweetMappingArReturnLocation";
   const permissionCacheWindowMs =
     typeof arConfig.permissionCacheWindowMs === "number" && Number.isFinite(arConfig.permissionCacheWindowMs)
       ? arConfig.permissionCacheWindowMs
@@ -1528,6 +1530,82 @@
       });
   }
 
+  function persistMapReturnLocation() {
+    if (!window.sessionStorage || !currentPosition || !currentPosition.coords) {
+      return;
+    }
+    const lat = Number(currentPosition.coords.latitude);
+    const lon = Number(currentPosition.coords.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        mapReturnLocationKey,
+        JSON.stringify({
+          lat: lat,
+          lon: lon,
+          accuracy: Number(currentPosition.coords.accuracy) || null,
+          timestamp: Date.now(),
+        })
+      );
+    } catch (error) {
+      // Ignore storage errors (private mode or restricted context).
+    }
+  }
+
+  function buildMapReturnUrl(lat, lon) {
+    const ts = Date.now();
+    const url =
+      "index.html?ar_return=1&ar_return_lat=" +
+      encodeURIComponent(String(lat)) +
+      "&ar_return_lon=" +
+      encodeURIComponent(String(lon)) +
+      "&ar_return_ts=" +
+      encodeURIComponent(String(ts));
+    return url;
+  }
+
+  function navigateToMap() {
+    const fallbackLat =
+      currentPosition && currentPosition.coords ? Number(currentPosition.coords.latitude) : NaN;
+    const fallbackLon =
+      currentPosition && currentPosition.coords ? Number(currentPosition.coords.longitude) : NaN;
+
+    if (Number.isFinite(fallbackLat) && Number.isFinite(fallbackLon)) {
+      persistMapReturnLocation();
+      window.location.href = buildMapReturnUrl(fallbackLat, fallbackLon);
+      return;
+    }
+
+    if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== "function") {
+      window.location.href = "index.html?ar_return=1";
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        currentPosition = position;
+        persistMapReturnLocation();
+        const lat = Number(position.coords.latitude);
+        const lon = Number(position.coords.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          window.location.href = buildMapReturnUrl(lat, lon);
+          return;
+        }
+        window.location.href = "index.html?ar_return=1";
+      },
+      function () {
+        window.location.href = "index.html?ar_return=1";
+      },
+      {
+        enableHighAccuracy: !!geolocationConfig.enableHighAccuracy,
+        timeout: 2500,
+        maximumAge: 0,
+      }
+    );
+  }
+
   window.addEventListener("pagehide", function () {
     if (buildTimer !== null) {
       clearTimeout(buildTimer);
@@ -1571,6 +1649,13 @@
   }
 
   setupLocationPickerUI();
+
+  if (mapButton) {
+    mapButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      navigateToMap();
+    });
+  }
 
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");

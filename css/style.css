@@ -180,6 +180,29 @@ button.cesium-infoBox-close {
     opacity: 0.9;
 }
 
+#buttonGeo.is-tracking {
+    opacity: 1;
+    box-shadow: 0 0 0 1px rgba(120, 220, 255, 0.65), 0 0 14px rgba(80, 205, 255, 0.75);
+    animation: geo-tracking-glow 1.6s ease-in-out infinite;
+}
+
+#buttonGeo.is-tracking .icon-font {
+    color: #c9f3ff;
+    text-shadow: 0 0 6px rgba(120, 220, 255, 0.9);
+}
+
+@keyframes geo-tracking-glow {
+    0% {
+        box-shadow: 0 0 0 1px rgba(120, 220, 255, 0.55), 0 0 8px rgba(80, 205, 255, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 0 1px rgba(120, 220, 255, 0.9), 0 0 16px rgba(80, 205, 255, 0.95);
+    }
+    100% {
+        box-shadow: 0 0 0 1px rgba(120, 220, 255, 0.55), 0 0 8px rgba(80, 205, 255, 0.5);
+    }
+}
+
 h2 {
     font-size: 13px;
     font-weight: bold;
