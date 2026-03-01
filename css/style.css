@@ -192,6 +192,52 @@ button.cesium-infoBox-close {
     text-shadow: 0 0 6px rgba(120, 220, 255, 0.9);
 }
 
+#archiveIndexButton {
+    position: absolute;
+    left: 8px;
+    bottom: calc(35px + env(safe-area-inset-bottom));
+    z-index: 10001;
+    opacity: 0.92;
+    border-radius: 10px;
+    color: #f3f6fa;
+    background: rgba(88, 52, 24, 0.42);
+    text-decoration: none;
+}
+
+#archiveIndexButton .button-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 2px 10px;
+}
+
+.archive-index-button__label {
+    display: block;
+    font-size: 12px;
+    line-height: 1.2;
+    color: #f3f6fa;
+    text-shadow: none;
+    white-space: nowrap;
+}
+
+#archiveIndexButton:hover,
+#archiveIndexButton:active,
+#archiveIndexButton:visited {
+    color: #f3f6fa;
+    text-decoration: none;
+}
+
+#archiveIndexButton:hover {
+    background: rgba(104, 62, 30, 0.52);
+}
+
+#archiveIndexButton:focus-visible {
+    outline: 2px solid rgba(255, 233, 204, 0.72);
+    outline-offset: 2px;
+    background: rgba(104, 62, 30, 0.56);
+}
+
 @keyframes geo-tracking-glow {
     0% {
         box-shadow: 0 0 0 1px rgba(120, 220, 255, 0.55), 0 0 8px rgba(80, 205, 255, 0.5);
@@ -391,6 +437,10 @@ input.textbox:-webkit-autofill:active {
 @media screen and (max-width: 768px) {
     input.textbox {
         width: 124px !important;
+    }
+
+    #archiveIndexButton {
+        display: none;
     }
 
     #textSearch {
