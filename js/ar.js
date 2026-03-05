@@ -631,7 +631,11 @@
       return null;
     }
     cameraObj.updateMatrixWorld(true);
-    cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    if (typeof cameraObj.getWorldDirection === "function") {
+      cameraObj.getWorldDirection(cameraForwardWorld);
+    } else {
+      cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    }
     if (Math.abs(cameraForwardWorld.x) < 1e-6 && Math.abs(cameraForwardWorld.z) < 1e-6) {
       return null;
     }
@@ -1482,14 +1486,15 @@
           rawHeading = normalizeHeadingDeg(360 - event.alpha);
         }
         if (rawHeading !== null) {
-          if (
-            headingAccuracy === null ||
-            headingAccuracy <= maxCompassAccuracyDeg ||
-            typeof deviceHeading !== "number"
-          ) {
-            deviceHeading = smoothHeadingDeg(deviceHeading, rawHeading, headingSmoothingLerp);
-            deviceHeadingAccuracy = headingAccuracy;
+          if (headingAccuracy === null || headingAccuracy < 180) {
+            let lerp = headingSmoothingLerp;
+            if (typeof headingAccuracy === "number" && headingAccuracy > 0) {
+              const accuracyWeight = clamp(maxCompassAccuracyDeg / headingAccuracy, 0.2, 1);
+              lerp = clamp(headingSmoothingLerp * accuracyWeight, 0.03, 1);
+            }
+            deviceHeading = smoothHeadingDeg(deviceHeading, rawHeading, lerp);
           }
+          deviceHeadingAccuracy = headingAccuracy;
         }
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
