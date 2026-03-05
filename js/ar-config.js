@@ -6,7 +6,7 @@ window.AR_CONFIG = {
   twitterIconUrl: "data/icon/flags/twitter.png",
 
   // 位置情報の再取得間隔（ミリ秒）
-  locationPollIntervalMs: 5000,
+  locationPollIntervalMs: 30000,
 
   // 権限許可のキャッシュキー（localStorage）
   permissionCacheKey: "tweetMappingArPermissionGrantedAt",
@@ -33,9 +33,16 @@ window.AR_CONFIG = {
 
   geolocation: {
     // 端末の現在地取得オプション
-    enableHighAccuracy: false,
-    maximumAgeMs: 5000,
-    timeoutMs: 30000,
+    enableHighAccuracy: true,
+    maximumAgeMs: 0,
+    timeoutMs: 45000,
+  },
+
+  heading: {
+    // 方位の平滑化係数（0に近いほど安定、1に近いほど追従）
+    smoothingLerp: 0.18,
+    // iOS SafariのwebKit方位精度がこの値(度)より悪い場合は採用しない
+    maxCompassAccuracyDeg: 35,
   },
 
   // ARマーカーの見え方・配置を調整する表示パラメータ

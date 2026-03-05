@@ -15,6 +15,7 @@
   const mapButton = document.getElementById("buttonMap");
   const arConfig = window.AR_CONFIG || {};
   const geolocationConfig = arConfig.geolocation || {};
+  const headingConfig = arConfig.heading || {};
   const locationPickerConfig = arConfig.locationPicker || {};
   const debugConfig = arConfig.debug || {};
   const debugTestLocation = debugConfig.testLocation || {};
@@ -40,6 +41,8 @@
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
+  const headingSmoothingLerp = clamp(numberSetting(headingConfig.smoothingLerp, 0.18), 0.01, 1);
+  const maxCompassAccuracyDeg = Math.max(0, numberSetting(headingConfig.maxCompassAccuracyDeg, 35));
   const verticalRangeTopRatio = numberSetting(displaySettings.verticalRangeTopRatio, 0.0);
   const verticalRangeBottomRatio = numberSetting(displaySettings.verticalRangeBottomRatio, 0.8);
   const iconSizeMinPx = numberSetting(displaySettings.iconSizeMinPx, 5);
@@ -155,6 +158,7 @@
   let cameraStream = null;
   let locationPollTimer = null;
   let deviceHeading = null;
+  let deviceHeadingAccuracy = null;
   let devicePitchDeg = null;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
@@ -295,7 +299,9 @@
     }
     const headingText = typeof deviceHeading === "number" ? deviceHeading.toFixed(0) + "°" : "--°";
     const pitchText = typeof devicePitchDeg === "number" ? devicePitchDeg.toFixed(1) + "°" : "--°";
-    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText;
+    const headingAccuracyText =
+      typeof deviceHeadingAccuracy === "number" ? " / 方位精度: ±" + deviceHeadingAccuracy.toFixed(0) + "°" : "";
+    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText + headingAccuracyText;
   }
 
   function setLaunchStatus(message) {
@@ -581,6 +587,22 @@
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function normalizeHeadingDeg(deg) {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  function shortestHeadingDeltaDeg(fromDeg, toDeg) {
+    return ((toDeg - fromDeg + 540) % 360) - 180;
+  }
+
+  function smoothHeadingDeg(currentDeg, targetDeg, lerp) {
+    if (currentDeg === null) {
+      return normalizeHeadingDeg(targetDeg);
+    }
+    const delta = shortestHeadingDeltaDeg(currentDeg, targetDeg);
+    return normalizeHeadingDeg(currentDeg + delta * lerp);
   }
 
   function readDevicePitchDeg(event) {
@@ -1354,10 +1376,21 @@
     window.addEventListener(
       "deviceorientation",
       function (event) {
+        let rawHeading = null;
+        let headingAccuracy = null;
         if (typeof event.webkitCompassHeading === "number") {
-          deviceHeading = event.webkitCompassHeading;
+          rawHeading = normalizeHeadingDeg(event.webkitCompassHeading);
+          if (typeof event.webkitCompassAccuracy === "number" && Number.isFinite(event.webkitCompassAccuracy)) {
+            headingAccuracy = Math.abs(event.webkitCompassAccuracy);
+          }
         } else if (event.absolute && typeof event.alpha === "number") {
-          deviceHeading = (360 - event.alpha) % 360;
+          rawHeading = normalizeHeadingDeg(360 - event.alpha);
+        }
+        if (rawHeading !== null) {
+          if (headingAccuracy === null || headingAccuracy <= maxCompassAccuracyDeg) {
+            deviceHeading = smoothHeadingDeg(deviceHeading, rawHeading, headingSmoothingLerp);
+            deviceHeadingAccuracy = headingAccuracy;
+          }
         }
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
