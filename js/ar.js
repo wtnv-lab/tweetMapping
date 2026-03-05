@@ -45,6 +45,11 @@
   }
   const headingSmoothingLerp = clamp(numberSetting(headingConfig.smoothingLerp, 0.18), 0.01, 1);
   const maxCompassAccuracyDeg = Math.max(0, numberSetting(headingConfig.maxCompassAccuracyDeg, 35));
+  const headingCalibrationSampleCount = Math.max(
+    3,
+    Math.round(numberSetting(headingConfig.calibrationSampleCount, 8))
+  );
+  const headingCalibrationMaxWaitMs = Math.max(1000, numberSetting(headingConfig.calibrationMaxWaitMs, 2500));
   const verticalRangeTopRatio = numberSetting(displaySettings.verticalRangeTopRatio, 0.0);
   const verticalRangeBottomRatio = numberSetting(displaySettings.verticalRangeBottomRatio, 0.8);
   const iconSizeMinPx = numberSetting(displaySettings.iconSizeMinPx, 5);
@@ -186,6 +191,10 @@
   let locationSourceButton = null;
   let locationSourceSelect = null;
   let compassSegmentWidthPx = 360 * compassPxPerDeg;
+  let headingCalibrationOffsetDeg = null;
+  let headingCalibrationStartedAt = 0;
+  let headingCalibrationSamples = [];
+  let headingCalibrationDone = false;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
   const cameraForwardBase = new THREE.Vector3(0, 0, -1);
@@ -610,6 +619,70 @@
     return normalizeHeadingDeg(currentDeg + delta * lerp);
   }
 
+  function circularMeanDegrees(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return null;
+    }
+    let sumSin = 0;
+    let sumCos = 0;
+    for (let i = 0; i < values.length; i++) {
+      const rad = (values[i] * Math.PI) / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    if (Math.abs(sumSin) < 1e-8 && Math.abs(sumCos) < 1e-8) {
+      return null;
+    }
+    return (Math.atan2(sumSin, sumCos) * 180) / Math.PI;
+  }
+
+  function resetHeadingCalibration() {
+    headingCalibrationOffsetDeg = null;
+    headingCalibrationStartedAt = 0;
+    headingCalibrationSamples = [];
+    headingCalibrationDone = false;
+  }
+
+  function maybeFinalizeHeadingCalibration() {
+    if (headingCalibrationDone) {
+      return;
+    }
+    const elapsed = headingCalibrationStartedAt ? Date.now() - headingCalibrationStartedAt : 0;
+    const enoughSamples = headingCalibrationSamples.length >= headingCalibrationSampleCount;
+    const timedOut = elapsed >= headingCalibrationMaxWaitMs;
+    if (!enoughSamples && !timedOut) {
+      return;
+    }
+    if (headingCalibrationSamples.length < 3) {
+      return;
+    }
+    const meanDelta = circularMeanDegrees(headingCalibrationSamples);
+    if (meanDelta === null || !Number.isFinite(meanDelta)) {
+      return;
+    }
+    headingCalibrationOffsetDeg = meanDelta;
+    headingCalibrationDone = true;
+    setStatus("方位キャリブレーション完了。");
+  }
+
+  function collectHeadingCalibrationSample() {
+    if (headingCalibrationDone || typeof deviceHeading !== "number") {
+      return;
+    }
+    const cameraHeading = getCameraHeadingDeg();
+    if (cameraHeading === null) {
+      return;
+    }
+    if (!headingCalibrationStartedAt) {
+      headingCalibrationStartedAt = Date.now();
+      headingCalibrationSamples = [];
+      setStatus("方位キャリブレーション中...");
+    }
+    const delta = shortestHeadingDeltaDeg(cameraHeading, deviceHeading);
+    headingCalibrationSamples.push(delta);
+    maybeFinalizeHeadingCalibration();
+  }
+
   function getPanYawOffsetDeg() {
     if (!scene) {
       return 0;
@@ -646,6 +719,12 @@
   function currentViewHeadingDeg() {
     const cameraHeading = getCameraHeadingDeg();
     if (cameraHeading !== null) {
+      if (typeof headingCalibrationOffsetDeg === "number") {
+        return normalizeHeadingDeg(cameraHeading + headingCalibrationOffsetDeg);
+      }
+      if (typeof deviceHeading === "number") {
+        return normalizeHeadingDeg(deviceHeading + getPanYawOffsetDeg());
+      }
       return cameraHeading;
     }
     if (typeof deviceHeading !== "number") {
@@ -1500,6 +1579,7 @@
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
           devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
         }
+        collectHeadingCalibrationSample();
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
         }
@@ -1620,6 +1700,7 @@
     if (arStarting) {
       return;
     }
+    resetHeadingCalibration();
     if (!isMobileOrTablet) {
       setLaunchStatus("AR版はスマートフォン・タブレット専用です。地図版をご利用ください。");
       return;

@@ -43,6 +43,10 @@ window.AR_CONFIG = {
     smoothingLerp: 0.18,
     // iOS SafariのwebKit方位精度がこの値(度)より悪い場合は採用しない
     maxCompassAccuracyDeg: 35,
+    // 起動時キャリブレーションで集める方位サンプル数
+    calibrationSampleCount: 8,
+    // 起動時キャリブレーションの最大待機時間（ミリ秒）
+    calibrationMaxWaitMs: 2500,
   },
 
   // ARマーカーの見え方・配置を調整する表示パラメータ
