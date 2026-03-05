@@ -12,6 +12,8 @@
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
+  const compassViewport = document.getElementById("compassViewport");
+  const compassTrack = document.getElementById("compassTrack");
   const mapButton = document.getElementById("buttonMap");
   const arConfig = window.AR_CONFIG || {};
   const geolocationConfig = arConfig.geolocation || {};
@@ -72,6 +74,8 @@
   const maxLabelChars = 26;
   const arFieldYOffsetPx = 0;
   const offscreenMargin = 48;
+  const compassStepDeg = 15;
+  const compassPxPerDeg = 2.4;
   const laneStepDeg = 2.8;
   const clusterStepDeg = 8.0;
   const overlapRepulsionEnabled = true;
@@ -181,6 +185,7 @@
   let selectedCityIndex = -1;
   let locationSourceButton = null;
   let locationSourceSelect = null;
+  let compassSegmentWidthPx = 360 * compassPxPerDeg;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
   const cameraForwardBase = new THREE.Vector3(0, 0, -1);
@@ -603,6 +608,97 @@
     }
     const delta = shortestHeadingDeltaDeg(currentDeg, targetDeg);
     return normalizeHeadingDeg(currentDeg + delta * lerp);
+  }
+
+  function getPanYawOffsetDeg() {
+    if (!scene) {
+      return 0;
+    }
+    const camEntity = scene.querySelector("#arCamera");
+    if (!camEntity || !camEntity.components || !camEntity.components["look-controls"]) {
+      return 0;
+    }
+    const yawObject = camEntity.components["look-controls"].yawObject;
+    if (!yawObject || !yawObject.rotation || typeof yawObject.rotation.y !== "number") {
+      return 0;
+    }
+    return (yawObject.rotation.y * 180) / Math.PI;
+  }
+
+  function getCameraHeadingDeg() {
+    const cameraObj = getArCameraObject();
+    if (!cameraObj) {
+      return null;
+    }
+    cameraObj.updateMatrixWorld(true);
+    cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    if (Math.abs(cameraForwardWorld.x) < 1e-6 && Math.abs(cameraForwardWorld.z) < 1e-6) {
+      return null;
+    }
+    const heading = (Math.atan2(cameraForwardWorld.x, -cameraForwardWorld.z) * 180) / Math.PI;
+    return normalizeHeadingDeg(heading);
+  }
+
+  function currentViewHeadingDeg() {
+    const cameraHeading = getCameraHeadingDeg();
+    if (cameraHeading !== null) {
+      return cameraHeading;
+    }
+    if (typeof deviceHeading !== "number") {
+      return null;
+    }
+    return normalizeHeadingDeg(deviceHeading + getPanYawOffsetDeg());
+  }
+
+  function buildCompassTrack() {
+    if (!compassTrack) {
+      return;
+    }
+    compassTrack.innerHTML = "";
+    const segmentWidth = 360 * compassPxPerDeg;
+    compassSegmentWidthPx = segmentWidth;
+    const totalWidth = segmentWidth * 3;
+    compassTrack.style.width = totalWidth.toFixed(1) + "px";
+
+    const cardinalByDeg = {
+      0: "N",
+      90: "E",
+      180: "S",
+      270: "W",
+    };
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const baseOffset = cycle * segmentWidth;
+      for (let deg = 0; deg < 360; deg += compassStepDeg) {
+        const x = baseOffset + deg * compassPxPerDeg;
+        const mark = document.createElement("div");
+        const isMajor = deg % 45 === 0;
+        mark.className = isMajor ? "compass-mark major" : "compass-mark";
+        mark.style.left = x.toFixed(1) + "px";
+        compassTrack.appendChild(mark);
+
+        if (Object.prototype.hasOwnProperty.call(cardinalByDeg, deg)) {
+          const label = document.createElement("span");
+          label.className = "compass-label cardinal";
+          label.style.left = x.toFixed(1) + "px";
+          label.textContent = cardinalByDeg[deg];
+          compassTrack.appendChild(label);
+        }
+      }
+    }
+  }
+
+  function updateCompassStrip() {
+    if (!compassViewport || !compassTrack) {
+      return;
+    }
+    const heading = currentViewHeadingDeg();
+    const effectiveHeading = heading === null ? 0 : heading;
+    compassTrack.style.opacity = heading === null ? "0.5" : "1";
+    const centerX = compassViewport.clientWidth * 0.5;
+    const targetX = compassSegmentWidthPx + effectiveHeading * compassPxPerDeg;
+    const translateX = centerX - targetX;
+    compassTrack.style.transform = "translate3d(" + translateX.toFixed(1) + "px, 0, 0)";
   }
 
   function readDevicePitchDeg(event) {
@@ -1044,7 +1140,6 @@
     }
     visibleMarkerCount = visibleCount;
     updateMarkerStatusText();
-    updateTelemetry();
     if (selectedMarker && selectedMarker.root) {
       if (selectedMarker.root.style.display === "none") {
         clearSelection();
@@ -1061,6 +1156,8 @@
     const tick = function () {
       markerRenderFrame = requestAnimationFrame(tick);
       updateScreenMarkers();
+      updateTelemetry();
+      updateCompassStrip();
     };
     markerRenderFrame = requestAnimationFrame(tick);
   }
@@ -1373,9 +1470,7 @@
   }
 
   function bindOrientationDiagnostics() {
-    window.addEventListener(
-      "deviceorientation",
-      function (event) {
+    const onOrientation = function (event) {
         let rawHeading = null;
         let headingAccuracy = null;
         if (typeof event.webkitCompassHeading === "number") {
@@ -1383,11 +1478,15 @@
           if (typeof event.webkitCompassAccuracy === "number" && Number.isFinite(event.webkitCompassAccuracy)) {
             headingAccuracy = Math.abs(event.webkitCompassAccuracy);
           }
-        } else if (event.absolute && typeof event.alpha === "number") {
+        } else if (typeof event.alpha === "number") {
           rawHeading = normalizeHeadingDeg(360 - event.alpha);
         }
         if (rawHeading !== null) {
-          if (headingAccuracy === null || headingAccuracy <= maxCompassAccuracyDeg) {
+          if (
+            headingAccuracy === null ||
+            headingAccuracy <= maxCompassAccuracyDeg ||
+            typeof deviceHeading !== "number"
+          ) {
             deviceHeading = smoothHeadingDeg(deviceHeading, rawHeading, headingSmoothingLerp);
             deviceHeadingAccuracy = headingAccuracy;
           }
@@ -1399,9 +1498,9 @@
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
         }
-      },
-      true
-    );
+    };
+    window.addEventListener("deviceorientation", onOrientation, true);
+    window.addEventListener("deviceorientationabsolute", onOrientation, true);
   }
 
   function requestCameraPermission() {
@@ -1659,6 +1758,11 @@
     cameraStream = null;
   });
 
+  window.addEventListener("resize", function () {
+    buildCompassTrack();
+    updateCompassStrip();
+  });
+
   if (debugToggle) {
     updateDebugToggleState();
     debugToggle.addEventListener("change", function () {
@@ -1682,6 +1786,8 @@
   }
 
   setupLocationPickerUI();
+  buildCompassTrack();
+  updateCompassStrip();
 
   if (mapButton) {
     mapButton.addEventListener("click", function (event) {
