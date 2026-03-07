@@ -78,6 +78,8 @@
   const minBuildIntervalMs = 1200;
   const tweetGridCellSizeDeg = 0.02;
   const tweetGridSearchRadius = 6;
+  const markerCoverageMinMeters = 150000;
+  const markerBearingSectorCount = 12;
   const maxLabelChars = 26;
   const arFieldYOffsetPx = 0;
   const offscreenMargin = 48;
@@ -97,7 +99,6 @@
   const cameraFarDefault = 12000;
   const cameraFarPaddingFactor = 1.25;
   const cameraFarMin = 12000;
-  const cameraFarMax = 20000000;
   const tiltPitchRangeDeg = 90;
   const tiltPitchCenterDeg = 90;
   const tiltInvert = true;
@@ -925,7 +926,87 @@
       }
     }
 
-    return candidates.length > 0 ? candidates : allTweets;
+    if (candidates.length < limit) {
+      return allTweets;
+    }
+    return candidates;
+  }
+
+  function selectDisplayCandidates(entries, maxCount) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return [];
+    }
+
+    const sortedEntries = entries.slice().sort(function (a, b) {
+      return a.distance - b.distance;
+    });
+    const anchorIndex = Math.min(sortedEntries.length, Math.max(1, maxCount)) - 1;
+    const coverageMeters = Math.max(markerCoverageMinMeters, sortedEntries[anchorIndex].distance);
+    const pool = [];
+    for (let i = 0; i < sortedEntries.length; i++) {
+      if (sortedEntries[i].distance <= coverageMeters) {
+        pool.push(sortedEntries[i]);
+      }
+    }
+
+    const sectorSpan = 360 / markerBearingSectorCount;
+    const sectors = [];
+    const sectorOffsets = [];
+    const selected = [];
+    const selectedIds = new Set();
+
+    for (let i = 0; i < markerBearingSectorCount; i++) {
+      sectors.push([]);
+      sectorOffsets.push(0);
+    }
+
+    for (let i = 0; i < pool.length; i++) {
+      const entry = pool[i];
+      const sectorIndex = Math.max(
+        0,
+        Math.min(markerBearingSectorCount - 1, Math.floor(entry.bearing / sectorSpan))
+      );
+      sectors[sectorIndex].push(entry);
+    }
+
+    let added = true;
+    while (selected.length < maxCount && added) {
+      added = false;
+      for (let sectorIndex = 0; sectorIndex < markerBearingSectorCount; sectorIndex++) {
+        const sectorEntries = sectors[sectorIndex];
+        const offset = sectorOffsets[sectorIndex];
+        if (offset >= sectorEntries.length) {
+          continue;
+        }
+        const entry = sectorEntries[offset];
+        sectorOffsets[sectorIndex] += 1;
+        if (selectedIds.has(entry.tweet.id)) {
+          continue;
+        }
+        selected.push(entry);
+        selectedIds.add(entry.tweet.id);
+        added = true;
+        if (selected.length >= maxCount) {
+          break;
+        }
+      }
+    }
+
+    if (selected.length < maxCount) {
+      for (let i = 0; i < sortedEntries.length && selected.length < maxCount; i++) {
+        const entry = sortedEntries[i];
+        if (selectedIds.has(entry.tweet.id)) {
+          continue;
+        }
+        selected.push(entry);
+        selectedIds.add(entry.tweet.id);
+      }
+    }
+
+    selected.sort(function (a, b) {
+      return a.distance - b.distance;
+    });
+    return selected;
   }
 
   function createMarkerFromPool() {
@@ -1122,10 +1203,9 @@
     }
     const fallbackFar = cameraFarDefault;
     const targetFar = Math.round(
-      clamp(
-        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) * cameraFarPaddingFactor,
+      Math.max(
         cameraFarMin,
-        cameraFarMax
+        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) * cameraFarPaddingFactor
       )
     );
     if (Math.abs((cameraObj.far || 0) - targetFar) < 1) {
@@ -1434,43 +1514,17 @@
     const lat = currentPosition.coords.latitude;
     const lon = currentPosition.coords.longitude;
     const candidateTweets = collectTweetsNearPosition(lat, lon, maxMarkers);
-    const candidates = [];
-    let farthestSelectedDistance = 0;
-
+    const distanceEntries = [];
     for (let i = 0; i < candidateTweets.length; i++) {
       const t = candidateTweets[i];
       const distance = haversineMeters(lat, lon, t.lat, t.lon);
-      const entry = {
+      distanceEntries.push({
         tweet: t,
         distance: distance,
-      };
-      if (candidates.length < maxMarkers) {
-        candidates.push(entry);
-        if (distance > farthestSelectedDistance) {
-          farthestSelectedDistance = distance;
-        }
-      } else if (distance < farthestSelectedDistance) {
-        let farthestIndex = 0;
-        let farthestDistance = candidates[0].distance;
-        for (let j = 1; j < candidates.length; j++) {
-          if (candidates[j].distance > farthestDistance) {
-            farthestDistance = candidates[j].distance;
-            farthestIndex = j;
-          }
-        }
-        candidates[farthestIndex] = entry;
-        farthestSelectedDistance = candidates[0].distance;
-        for (let j = 1; j < candidates.length; j++) {
-          if (candidates[j].distance > farthestSelectedDistance) {
-            farthestSelectedDistance = candidates[j].distance;
-          }
-        }
-      }
+        bearing: bearingDegrees(lat, lon, t.lat, t.lon),
+      });
     }
-
-    candidates.sort(function (a, b) {
-      return a.distance - b.distance;
-    });
+    const candidates = selectDisplayCandidates(distanceEntries, maxMarkers);
 
     clearMarkers();
     ensureMarkerPoolSize(maxMarkers);
@@ -1504,7 +1558,7 @@
       const candidate = candidates[i];
       const t = candidate.tweet;
       const distance = candidate.distance;
-      const bearing = bearingDegrees(lat, lon, t.lat, t.lon);
+      const bearing = candidate.bearing;
       const relativeDeg = ((bearing - headingNow + 540) % 360) - 180;
       const relativeRad = (relativeDeg * Math.PI) / 180;
       const projected = distance;
