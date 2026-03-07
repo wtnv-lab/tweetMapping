@@ -206,6 +206,70 @@ html, body {
   max-width: 100%;
 }
 
+#compassStrip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+
+#compassViewport {
+  position: relative;
+  width: min(92vw, 560px);
+  height: 28px;
+  overflow: hidden;
+}
+
+#compassTrack {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  will-change: transform;
+}
+
+.compass-mark {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.compass-mark.major {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.compass-label {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+  color: #eaf6ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  letter-spacing: 0.14em;
+}
+
+.compass-label.cardinal {
+  color: #eaf6ff;
+}
+
+#compassCenterLine {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(255, 96, 96, 0.95);
+}
+
 #locationSourceWrap {
   margin-top: 6px;
   display: inline-flex;
@@ -309,7 +373,7 @@ html, body {
   position: fixed;
   top: calc(44px + env(safe-area-inset-top));
   right: 8px;
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 8px;
   z-index: 5;

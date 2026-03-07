@@ -12,8 +12,12 @@
   const arRoot = document.getElementById("arRoot");
   const cameraFeed = document.getElementById("cameraFeed");
   const markerLayer = document.getElementById("markerLayer");
+  const compassViewport = document.getElementById("compassViewport");
+  const compassTrack = document.getElementById("compassTrack");
+  const mapButton = document.getElementById("buttonMap");
   const arConfig = window.AR_CONFIG || {};
   const geolocationConfig = arConfig.geolocation || {};
+  const headingConfig = arConfig.heading || {};
   const locationPickerConfig = arConfig.locationPicker || {};
   const debugConfig = arConfig.debug || {};
   const debugTestLocation = debugConfig.testLocation || {};
@@ -30,6 +34,7 @@
     lon: typeof debugTestLocation.lon === "number" && Number.isFinite(debugTestLocation.lon) ? debugTestLocation.lon : 139.745433,
   };
   const permissionCacheKey = arConfig.permissionCacheKey || "tweetMappingArPermissionGrantedAt";
+  const mapReturnLocationKey = arConfig.mapReturnLocationKey || "tweetMappingArReturnLocation";
   const permissionCacheWindowMs =
     typeof arConfig.permissionCacheWindowMs === "number" && Number.isFinite(arConfig.permissionCacheWindowMs)
       ? arConfig.permissionCacheWindowMs
@@ -38,18 +43,92 @@
   function numberSetting(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
   }
-  const maxMarkers = numberSetting(displaySettings.maxMarkers, 100);
-  const rebuildThresholdMeters = numberSetting(displaySettings.rebuildThresholdMeters, 30);
-  const minBuildIntervalMs = numberSetting(displaySettings.minBuildIntervalMs, 1200);
-  const maxLabelChars = numberSetting(displaySettings.maxLabelChars, 26);
-  const arFieldYOffsetPx = numberSetting(displaySettings.arFieldYOffsetPx, -20);
-  const offscreenMargin = numberSetting(displaySettings.offscreenMargin, 140);
-  const laneStepDeg = numberSetting(displaySettings.laneStepDeg, 2.8);
-  const clusterStepDeg = numberSetting(displaySettings.clusterStepDeg, 8.0);
-  const overlapRepulsionEnabled = !!displaySettings.overlapRepulsionEnabled;
-  const overlapVibrationEnabled = !!displaySettings.overlapVibrationEnabled;
-  const overlapVibrationAmplitudePx = numberSetting(displaySettings.overlapVibrationAmplitudePx, 10);
-  const overlapVibrationFrequencyHz = numberSetting(displaySettings.overlapVibrationFrequencyHz, 2.2);
+  const headingSmoothingLerp = clamp(numberSetting(headingConfig.smoothingLerp, 0.18), 0.01, 1);
+  const maxCompassAccuracyDeg = Math.max(0, numberSetting(headingConfig.maxCompassAccuracyDeg, 35));
+  const headingCalibrationSampleCount = Math.max(
+    3,
+    Math.round(numberSetting(headingConfig.calibrationSampleCount, 8))
+  );
+  const headingCalibrationMaxWaitMs = Math.max(1000, numberSetting(headingConfig.calibrationMaxWaitMs, 2500));
+  const verticalRangeTopRatio = numberSetting(displaySettings.verticalRangeTopRatio, 0.0);
+  const verticalRangeBottomRatio = numberSetting(displaySettings.verticalRangeBottomRatio, 0.8);
+  const iconSizeMinPx = numberSetting(displaySettings.iconSizeMinPx, 5);
+  const iconSizeMaxPx = numberSetting(displaySettings.iconSizeMaxPx, 38);
+  const labelSizeMinPx = numberSetting(displaySettings.labelSizeMinPx, 10);
+  const labelSizeMaxPx = numberSetting(displaySettings.labelSizeMaxPx, 31);
+  const iconOpacityMin = numberSetting(displaySettings.iconOpacityMin, 0.36);
+  const iconOpacityMax = numberSetting(displaySettings.iconOpacityMax, 0.98);
+  const labelOpacityMin = numberSetting(displaySettings.labelOpacityMin, 0.65);
+  const labelOpacityMax = numberSetting(displaySettings.labelOpacityMax, 0.99);
+  const nonLinearExponent = Math.max(0.2, numberSetting(displaySettings.nonLinearExponent, 0.36));
+  const tiltFollowShiftRatio = numberSetting(displaySettings.tiltFollowShiftRatio, 0.06);
+  const tiltSpacingFactor = numberSetting(displaySettings.tiltSpacingFactor, 3.0);
+  const scatterLaneWeight = 34;
+  const scatterClusterWeight = 56;
+  const scatterBaseFactor = 0.8;
+  const scatterDistanceFactor = 1.2;
+  const scatterYWeightScale = 0.515;
+  const scatterYFactorScale = 0.56;
+  const scatterYLaneWeight = scatterLaneWeight * scatterYWeightScale;
+  const scatterYClusterWeight = scatterClusterWeight * scatterYWeightScale;
+  const scatterYBaseFactor = scatterBaseFactor * scatterYFactorScale;
+  const scatterYDistanceFactor = scatterDistanceFactor * scatterYFactorScale;
+  const maxMarkers = 100;
+  const rebuildThresholdMeters = 30;
+  const minBuildIntervalMs = 1200;
+  const maxLabelChars = 26;
+  const arFieldYOffsetPx = 0;
+  const offscreenMargin = 48;
+  const compassStepDeg = 15;
+  const compassPxPerDeg = 2.4;
+  const laneStepDeg = 2.8;
+  const clusterStepDeg = 8.0;
+  const overlapRepulsionEnabled = true;
+  const overlapVibrationEnabled = false;
+  const overlapVibrationAmplitudePx = 10;
+  const overlapVibrationFrequencyHz = 2.2;
+  const perspectiveStrength = 3.0;
+  const scatterNearMeters = 1000;
+  const scatterFarMeters = 100000;
+  const scatterFarScale = 0.05;
+  const scatterDistanceExponent = 0.85;
+  const cameraFarDefault = 12000;
+  const cameraFarPaddingFactor = 1.25;
+  const cameraFarMin = 12000;
+  const cameraFarMax = 20000000;
+  const tiltPitchRangeDeg = 90;
+  const tiltPitchCenterDeg = 90;
+  const tiltInvert = true;
+  const tiltLayoutClamp = 0.35;
+  const tiltSpreadFactor = 0.5;
+  const rankScatterRatio = 0.02;
+  const screenYProjectionBlend = 0.4;
+  const screenXSmooth = 0.42;
+  const screenYSmooth = 0.22;
+  const autoAlignEnabled = 0;
+  const autoAlignTargetRatio = 0.49;
+  const autoAlignMaxShiftRatio = 0.14;
+  const autoAlignLerp = 0.35;
+  const targetYMinRatio = -0.12;
+  const targetYMaxRatio = 0.7;
+  const verticalSpreadScale = 0.5;
+  const markerBaseY = 1.8;
+  const markerSpreadStep = 0.45;
+  const markerLaneSpreadCap = 4.0;
+  const markerClusterSpreadCap = 3.0;
+  const markerVerticalBiasStrength = 0.8;
+  const markerLaneCrowdCap = 6;
+  const markerClusterCrowdCap = 6;
+  const markerDensityMaxAdd = 2.0;
+  const markerDensityClusterFactor = 0.2;
+  const markerDensityLaneFactor = 0.1;
+  const markerClusterOffsetWeight = 1.8;
+  const markerYMin = 0.6;
+  const markerYMax = 7.5;
+  const iconSizeDistanceFactor = 33;
+  const labelSizeDistanceFactor = 34;
+  const iconOpacityDistanceFactor = 0.62;
+  const labelOpacityDistanceFactor = 0.34;
   const locationPickerEnabled = !!locationPickerConfig.enabled;
   const locationPickerCities = Array.isArray(locationPickerConfig.cities)
     ? locationPickerConfig.cities
@@ -88,10 +167,12 @@
   let cameraStream = null;
   let locationPollTimer = null;
   let deviceHeading = null;
+  let deviceHeadingAccuracy = null;
   let devicePitchDeg = null;
   let renderedMarkerCount = 0;
   let nearbyCandidateCount = 0;
   let nearestDistanceMeters = null;
+  let farthestDistanceMeters = null;
   let visibleMarkerCount = 0;
   let markerStatusCacheKey = "";
   let selectedMarker = null;
@@ -101,10 +182,19 @@
   let arStarting = false;
   let arActive = false;
   let autoAlignYOffsetRatio = 0;
+  let arCameraEntity = null;
+  let arCameraObject = null;
+  let overlapSolveFrameCounter = 0;
+  let markerLayerSelectionBound = false;
   let locationSourceMode = "device";
   let selectedCityIndex = -1;
   let locationSourceButton = null;
   let locationSourceSelect = null;
+  let compassSegmentWidthPx = 360 * compassPxPerDeg;
+  let headingCalibrationOffsetDeg = null;
+  let headingCalibrationStartedAt = 0;
+  let headingCalibrationSamples = [];
+  let headingCalibrationDone = false;
   const projectedPoint = new THREE.Vector3();
   const cameraSpacePoint = new THREE.Vector3();
   const cameraForwardBase = new THREE.Vector3(0, 0, -1);
@@ -223,7 +313,9 @@
     }
     const headingText = typeof deviceHeading === "number" ? deviceHeading.toFixed(0) + "°" : "--°";
     const pitchText = typeof devicePitchDeg === "number" ? devicePitchDeg.toFixed(1) + "°" : "--°";
-    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText;
+    const headingAccuracyText =
+      typeof deviceHeadingAccuracy === "number" ? " / 方位精度: ±" + deviceHeadingAccuracy.toFixed(0) + "°" : "";
+    statusTelemetry.textContent = "方位: " + headingText + " / ティルト: " + pitchText + headingAccuracyText;
   }
 
   function setLaunchStatus(message) {
@@ -373,6 +465,102 @@
     targetScene.addEventListener("touchstart", onBackgroundTap, { passive: true });
   }
 
+  function getArCameraObject() {
+    if (!scene) {
+      return null;
+    }
+    if (!arCameraEntity || !arCameraEntity.isConnected) {
+      arCameraEntity = scene.querySelector("#arCamera");
+      arCameraObject = null;
+    }
+    if (!arCameraEntity) {
+      return null;
+    }
+    if (!arCameraObject) {
+      arCameraObject = arCameraEntity.getObject3D("camera") || null;
+    }
+    return arCameraObject;
+  }
+
+  function bindMarkerLayerSelection() {
+    if (markerLayerSelectionBound || !markerLayer) {
+      return;
+    }
+    markerLayerSelectionBound = true;
+    const onSelectFromLayer = function (event) {
+      const hit = event.target && event.target.closest ? event.target.closest(".screen-marker") : null;
+      if (!hit || !hit.__markerRef) {
+        return;
+      }
+      selectMarker(hit.__markerRef);
+    };
+    markerLayer.addEventListener("click", onSelectFromLayer);
+    markerLayer.addEventListener("touchstart", onSelectFromLayer, { passive: true });
+  }
+
+  function bindDragElasticYawReset(targetScene) {
+    const camEntity = targetScene.querySelector("#arCamera");
+    if (!camEntity) {
+      return;
+    }
+    let dragging = false;
+    let restoring = false;
+    let restoreVelocity = 0;
+    const spring = 0.02;
+    const damping = 0.82;
+
+    function getYawObject() {
+      const lookControls = camEntity.components && camEntity.components["look-controls"];
+      return lookControls && lookControls.yawObject ? lookControls.yawObject : null;
+    }
+
+    function startRestoreLoop() {
+      if (restoring) {
+        return;
+      }
+      restoring = true;
+      const step = function () {
+        const yawObject = getYawObject();
+        if (!yawObject) {
+          restoring = false;
+          return;
+        }
+        if (!dragging) {
+          const yaw = yawObject.rotation.y;
+          restoreVelocity += -yaw * spring;
+          restoreVelocity *= damping;
+          yawObject.rotation.y = yaw + restoreVelocity;
+          if (Math.abs(yawObject.rotation.y) < 0.0002 && Math.abs(restoreVelocity) < 0.0002) {
+            yawObject.rotation.y = 0;
+            restoreVelocity = 0;
+            restoring = false;
+            return;
+          }
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+
+    function onDragStart() {
+      dragging = true;
+      restoreVelocity = 0;
+      startRestoreLoop();
+    }
+
+    function onDragEnd() {
+      dragging = false;
+      startRestoreLoop();
+    }
+
+    targetScene.addEventListener("touchstart", onDragStart, { passive: true });
+    targetScene.addEventListener("touchend", onDragEnd, { passive: true });
+    targetScene.addEventListener("touchcancel", onDragEnd, { passive: true });
+    targetScene.addEventListener("mousedown", onDragStart);
+    targetScene.addEventListener("mouseup", onDragEnd);
+    targetScene.addEventListener("mouseleave", onDragEnd);
+  }
+
   function createScene() {
     arRoot.innerHTML =
       '<a-scene id="arScene" embedded vr-mode-ui="enabled: false" renderer="antialias: true; alpha: true; logarithmicDepthBuffer: true;">' +
@@ -382,7 +570,11 @@
       '<a-entity id="arCamera" camera="fov: 108; near: 0.05; far: 12000" look-controls="enabled: true; magicWindowTrackingEnabled: true; touchEnabled: true" wasd-controls="enabled: false" cursor="rayOrigin: mouse" raycaster="objects: .tweet-hit; far: 12000" position="0 1.6 0"></a-entity>' +
       "</a-scene>";
     scene = document.getElementById("arScene");
+    arCameraEntity = null;
+    arCameraObject = null;
     bindSceneEvents(scene);
+    bindMarkerLayerSelection();
+    bindDragElasticYawReset(scene);
   }
 
   function haversineMeters(lat1, lon1, lat2, lon2) {
@@ -411,6 +603,190 @@
     return Math.min(max, Math.max(min, value));
   }
 
+  function normalizeHeadingDeg(deg) {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  function shortestHeadingDeltaDeg(fromDeg, toDeg) {
+    return ((toDeg - fromDeg + 540) % 360) - 180;
+  }
+
+  function smoothHeadingDeg(currentDeg, targetDeg, lerp) {
+    if (currentDeg === null) {
+      return normalizeHeadingDeg(targetDeg);
+    }
+    const delta = shortestHeadingDeltaDeg(currentDeg, targetDeg);
+    return normalizeHeadingDeg(currentDeg + delta * lerp);
+  }
+
+  function circularMeanDegrees(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return null;
+    }
+    let sumSin = 0;
+    let sumCos = 0;
+    for (let i = 0; i < values.length; i++) {
+      const rad = (values[i] * Math.PI) / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    if (Math.abs(sumSin) < 1e-8 && Math.abs(sumCos) < 1e-8) {
+      return null;
+    }
+    return (Math.atan2(sumSin, sumCos) * 180) / Math.PI;
+  }
+
+  function resetHeadingCalibration() {
+    headingCalibrationOffsetDeg = null;
+    headingCalibrationStartedAt = 0;
+    headingCalibrationSamples = [];
+    headingCalibrationDone = false;
+  }
+
+  function maybeFinalizeHeadingCalibration() {
+    if (headingCalibrationDone) {
+      return;
+    }
+    const elapsed = headingCalibrationStartedAt ? Date.now() - headingCalibrationStartedAt : 0;
+    const enoughSamples = headingCalibrationSamples.length >= headingCalibrationSampleCount;
+    const timedOut = elapsed >= headingCalibrationMaxWaitMs;
+    if (!enoughSamples && !timedOut) {
+      return;
+    }
+    if (headingCalibrationSamples.length < 3) {
+      return;
+    }
+    const meanDelta = circularMeanDegrees(headingCalibrationSamples);
+    if (meanDelta === null || !Number.isFinite(meanDelta)) {
+      return;
+    }
+    headingCalibrationOffsetDeg = meanDelta;
+    headingCalibrationDone = true;
+    setStatus("方位キャリブレーション完了。");
+    if (currentPosition && dataLoaded) {
+      scheduleBuild(true);
+    }
+  }
+
+  function collectHeadingCalibrationSample() {
+    if (headingCalibrationDone || typeof deviceHeading !== "number") {
+      return;
+    }
+    const cameraHeading = getCameraHeadingDeg();
+    if (cameraHeading === null) {
+      return;
+    }
+    if (!headingCalibrationStartedAt) {
+      headingCalibrationStartedAt = Date.now();
+      headingCalibrationSamples = [];
+      setStatus("方位キャリブレーション中...");
+    }
+    const delta = shortestHeadingDeltaDeg(cameraHeading, deviceHeading);
+    headingCalibrationSamples.push(delta);
+    maybeFinalizeHeadingCalibration();
+  }
+
+  function getPanYawOffsetDeg() {
+    if (!scene) {
+      return 0;
+    }
+    const camEntity = scene.querySelector("#arCamera");
+    if (!camEntity || !camEntity.components || !camEntity.components["look-controls"]) {
+      return 0;
+    }
+    const yawObject = camEntity.components["look-controls"].yawObject;
+    if (!yawObject || !yawObject.rotation || typeof yawObject.rotation.y !== "number") {
+      return 0;
+    }
+    return (yawObject.rotation.y * 180) / Math.PI;
+  }
+
+  function getCameraHeadingDeg() {
+    const cameraObj = getArCameraObject();
+    if (!cameraObj) {
+      return null;
+    }
+    cameraObj.updateMatrixWorld(true);
+    if (typeof cameraObj.getWorldDirection === "function") {
+      cameraObj.getWorldDirection(cameraForwardWorld);
+    } else {
+      cameraForwardWorld.copy(cameraForwardBase).applyQuaternion(cameraObj.quaternion);
+    }
+    if (Math.abs(cameraForwardWorld.x) < 1e-6 && Math.abs(cameraForwardWorld.z) < 1e-6) {
+      return null;
+    }
+    const heading = (Math.atan2(cameraForwardWorld.x, -cameraForwardWorld.z) * 180) / Math.PI;
+    return normalizeHeadingDeg(heading);
+  }
+
+  function currentViewHeadingDeg() {
+    const cameraHeading = getCameraHeadingDeg();
+    if (cameraHeading !== null) {
+      if (typeof headingCalibrationOffsetDeg === "number") {
+        return normalizeHeadingDeg(cameraHeading + headingCalibrationOffsetDeg);
+      }
+      if (typeof deviceHeading === "number") {
+        return normalizeHeadingDeg(deviceHeading + getPanYawOffsetDeg());
+      }
+      return cameraHeading;
+    }
+    if (typeof deviceHeading !== "number") {
+      return null;
+    }
+    return normalizeHeadingDeg(deviceHeading + getPanYawOffsetDeg());
+  }
+
+  function buildCompassTrack() {
+    if (!compassTrack) {
+      return;
+    }
+    compassTrack.innerHTML = "";
+    const segmentWidth = 360 * compassPxPerDeg;
+    compassSegmentWidthPx = segmentWidth;
+    const totalWidth = segmentWidth * 3;
+    compassTrack.style.width = totalWidth.toFixed(1) + "px";
+
+    const cardinalByDeg = {
+      0: "N",
+      90: "E",
+      180: "S",
+      270: "W",
+    };
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const baseOffset = cycle * segmentWidth;
+      for (let deg = 0; deg < 360; deg += compassStepDeg) {
+        const x = baseOffset + deg * compassPxPerDeg;
+        const mark = document.createElement("div");
+        const isMajor = deg % 45 === 0;
+        mark.className = isMajor ? "compass-mark major" : "compass-mark";
+        mark.style.left = x.toFixed(1) + "px";
+        compassTrack.appendChild(mark);
+
+        if (Object.prototype.hasOwnProperty.call(cardinalByDeg, deg)) {
+          const label = document.createElement("span");
+          label.className = "compass-label cardinal";
+          label.style.left = x.toFixed(1) + "px";
+          label.textContent = cardinalByDeg[deg];
+          compassTrack.appendChild(label);
+        }
+      }
+    }
+  }
+
+  function updateCompassStrip() {
+    if (!compassViewport || !compassTrack) {
+      return;
+    }
+    const heading = currentViewHeadingDeg();
+    const effectiveHeading = heading === null ? 0 : heading;
+    compassTrack.style.opacity = heading === null ? "0.5" : "1";
+    const centerX = compassViewport.clientWidth * 0.5;
+    const targetX = compassSegmentWidthPx + effectiveHeading * compassPxPerDeg;
+    const translateX = centerX - targetX;
+    compassTrack.style.transform = "translate3d(" + translateX.toFixed(1) + "px, 0, 0)";
+  }
+
   function readDevicePitchDeg(event) {
     const beta = typeof event.beta === "number" ? event.beta : null;
     const gamma = typeof event.gamma === "number" ? event.gamma : null;
@@ -435,7 +811,6 @@
 
   function toPerspectiveNorm(verticalNorm) {
     const t = clamp(verticalNorm, 0, 1);
-    const perspectiveStrength = Math.max(0, numberSetting(displaySettings.rankPerspectiveStrength, 2.5));
     if (perspectiveStrength <= 0) {
       return t;
     }
@@ -446,10 +821,10 @@
     if (!Number.isFinite(distanceMeters) || distanceMeters < 0) {
       return 1;
     }
-    const nearMeters = Math.max(0, numberSetting(displaySettings.xScatterNearMeters, 1000));
-    const farMeters = Math.max(nearMeters + 1, numberSetting(displaySettings.xScatterFarMeters, 100000));
-    const farScale = clamp(numberSetting(displaySettings.xScatterFarScale, 0.05), 0, 1);
-    const exponent = Math.max(0.1, numberSetting(displaySettings.xScatterDistanceExponent, 0.85));
+    const nearMeters = Math.max(0, scatterNearMeters);
+    const farMeters = Math.max(nearMeters + 1, scatterFarMeters);
+    const farScale = clamp(scatterFarScale, 0, 1);
+    const exponent = Math.max(0.1, scatterDistanceExponent);
     if (distanceMeters <= nearMeters) {
       return 1;
     }
@@ -470,6 +845,7 @@
     for (let i = 0; i < markerEntities.length; i++) {
       const marker = markerEntities[i].root;
       if (marker && marker.parentNode) {
+        marker.__markerRef = null;
         marker.parentNode.removeChild(marker);
       }
     }
@@ -483,22 +859,12 @@
     if (!currentPosition || renderedMarkerCount <= 0) {
       return;
     }
-    const nearestText = nearestDistanceMeters !== null ? ", 最短 " + nearestDistanceMeters + "m" : "";
-    const message =
-      "表示 " +
-      renderedMarkerCount +
-      " 件（画面内 " +
-      visibleMarkerCount +
-      " 件 / 総数 " +
-      allTweets.length +
-      " 件" +
-      nearestText +
-      "）";
+    const nearestText = nearestDistanceMeters !== null ? nearestDistanceMeters + "m" : "-";
+    const farthestText = farthestDistanceMeters !== null ? farthestDistanceMeters + "m" : "-";
+    const message = "最短: " + nearestText + " / 最長: " + farthestText;
     const cacheKey = [
-      renderedMarkerCount,
-      visibleMarkerCount,
-      allTweets.length,
       nearestDistanceMeters === null ? "-" : nearestDistanceMeters,
+      farthestDistanceMeters === null ? "-" : farthestDistanceMeters,
     ].join("|");
     if (cacheKey === markerStatusCacheKey) {
       return;
@@ -597,24 +963,16 @@
   }
 
   function updateCameraFarByDistance(farthestDistanceMeters) {
-    if (!scene) {
-      return;
-    }
-    const camEntity = scene.querySelector("#arCamera");
-    if (!camEntity) {
-      return;
-    }
-    const cameraObj = camEntity.getObject3D("camera");
+    const cameraObj = getArCameraObject();
     if (!cameraObj) {
       return;
     }
-    const fallbackFar = numberSetting(displaySettings.cameraFarDefault, 12000);
+    const fallbackFar = cameraFarDefault;
     const targetFar = Math.round(
       clamp(
-        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) *
-          numberSetting(displaySettings.cameraFarPaddingFactor, 1.25),
-        numberSetting(displaySettings.cameraFarMin, fallbackFar),
-        numberSetting(displaySettings.cameraFarMax, 20000000)
+        (Number.isFinite(farthestDistanceMeters) ? farthestDistanceMeters : fallbackFar) * cameraFarPaddingFactor,
+        cameraFarMin,
+        cameraFarMax
       )
     );
     if (Math.abs((cameraObj.far || 0) - targetFar) < 1) {
@@ -632,9 +990,14 @@
     const iterations = 8;
     const pushStrength = 1.0;
     const maxOffset = 140;
+    const overlapOffsetLerp = 0.14;
+    const overlapReleaseLerp = 0.06;
     const minY = -offscreenMargin;
     const maxY = viewportHeight + offscreenMargin;
     const resolvedY = new Array(markers.length);
+    const bucketWidth = 180;
+    const bucketMap = new Map();
+    const markerBucketIds = new Array(markers.length);
 
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
@@ -646,32 +1009,73 @@
         marker.overlapOffsetY = 0;
       }
       resolvedY[i] = marker.screenY;
+      const bucketId = Math.floor(marker.screenX / bucketWidth);
+      markerBucketIds[i] = bucketId;
+      if (!bucketMap.has(bucketId)) {
+        bucketMap.set(bucketId, []);
+      }
+      bucketMap.get(bucketId).push(i);
     }
+    const bucketIds = Array.from(bucketMap.keys()).sort(function (a, b) {
+      return a - b;
+    });
 
     for (let iter = 0; iter < iterations; iter++) {
       let moved = false;
-      for (let i = 0; i < markers.length; i++) {
-        const a = markers[i];
-        for (let j = i + 1; j < markers.length; j++) {
-          const b = markers[j];
-          const dx = markers[j].screenX - markers[i].screenX;
-          const dy = resolvedY[j] - resolvedY[i];
-          const halfW = (a.boxWidth + b.boxWidth) * 0.5 + padding;
-          const halfH = (a.boxHeight + b.boxHeight) * 0.5 + padding;
-          const overlapX = halfW - Math.abs(dx);
-          const overlapY = halfH - Math.abs(dy);
-          if (overlapX <= 0 || overlapY <= 0) {
-            continue;
+      for (let b = 0; b < bucketIds.length; b++) {
+        const bucketId = bucketIds[b];
+        const currentIndices = bucketMap.get(bucketId) || [];
+        const nextIndices = bucketMap.get(bucketId + 1) || [];
+        for (let ai = 0; ai < currentIndices.length; ai++) {
+          const i = currentIndices[ai];
+          const a = markers[i];
+          for (let aj = ai + 1; aj < currentIndices.length; aj++) {
+            const j = currentIndices[aj];
+            const bMarker = markers[j];
+            const dx = bMarker.screenX - a.screenX;
+            const dy = resolvedY[j] - resolvedY[i];
+            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
+            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+            moved = true;
+            a.overlapLevel += 1;
+            bMarker.overlapLevel += 1;
+            const pushY = (overlapY + padding) * 0.5 * pushStrength;
+            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
+            const topIndex = aIsNearer ? i : j;
+            const bottomIndex = aIsNearer ? j : i;
+            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
           }
-          moved = true;
-          a.overlapLevel += 1;
-          b.overlapLevel += 1;
-          const pushY = (overlapY + padding) * 0.5 * pushStrength;
-          const aIsNearer = a.distanceNorm <= b.distanceNorm;
-          const topIndex = aIsNearer ? i : j;
-          const bottomIndex = aIsNearer ? j : i;
-          resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
-          resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
+          for (let nj = 0; nj < nextIndices.length; nj++) {
+            const j = nextIndices[nj];
+            const bMarker = markers[j];
+            if (markerBucketIds[j] - markerBucketIds[i] > 1) {
+              continue;
+            }
+            const dx = bMarker.screenX - a.screenX;
+            const dy = resolvedY[j] - resolvedY[i];
+            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
+            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
+            const overlapX = halfW - Math.abs(dx);
+            const overlapY = halfH - Math.abs(dy);
+            if (overlapX <= 0 || overlapY <= 0) {
+              continue;
+            }
+            moved = true;
+            a.overlapLevel += 1;
+            bMarker.overlapLevel += 1;
+            const pushY = (overlapY + padding) * 0.5 * pushStrength;
+            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
+            const topIndex = aIsNearer ? i : j;
+            const bottomIndex = aIsNearer ? j : i;
+            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
+          }
         }
       }
       if (!moved) {
@@ -682,7 +1086,12 @@
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
       marker.overlapOffsetX = 0;
-      marker.overlapOffsetY = clamp(resolvedY[i] - marker.screenY, -maxOffset, maxOffset);
+      const targetOffsetY = clamp(resolvedY[i] - marker.screenY, -maxOffset, maxOffset);
+      const lerp = marker.overlapLevel > 0 ? overlapOffsetLerp : overlapReleaseLerp;
+      marker.overlapOffsetY += (targetOffsetY - marker.overlapOffsetY) * lerp;
+      if (Math.abs(marker.overlapOffsetY) < 0.1) {
+        marker.overlapOffsetY = 0;
+      }
     }
   }
 
@@ -690,11 +1099,7 @@
     if (!scene || markerEntities.length === 0) {
       return;
     }
-    const camEntity = scene.querySelector("#arCamera");
-    if (!camEntity) {
-      return;
-    }
-    const cameraObj = camEntity.getObject3D("camera");
+    const cameraObj = getArCameraObject();
     if (!cameraObj) {
       return;
     }
@@ -715,70 +1120,82 @@
         continue;
       }
       const xScatter =
-        (marker.laneOffset * numberSetting(displaySettings.xScatterLaneWeight, 34) +
-          marker.clusterOffset * numberSetting(displaySettings.xScatterClusterWeight, 56)) *
-        (numberSetting(displaySettings.xScatterBaseFactor, 0.8) +
-          marker.distanceNorm * numberSetting(displaySettings.xScatterDistanceFactor, 1.2)) *
+        (marker.laneOffset * scatterLaneWeight + marker.clusterOffset * scatterClusterWeight) *
+        (scatterBaseFactor + marker.distanceNorm * scatterDistanceFactor) *
         xScatterDistanceScale(marker.distanceRawMeters);
       const rawYScatter =
-        (marker.laneOffset * numberSetting(displaySettings.yScatterLaneWeight, 17.5) +
-          marker.clusterOffset * numberSetting(displaySettings.yScatterClusterWeight, 30)) *
-        (numberSetting(displaySettings.yScatterBaseFactor, 0.4375) +
-          verticalNorm * numberSetting(displaySettings.yScatterDistanceFactor, 0.6875));
+        (marker.laneOffset * scatterYLaneWeight + marker.clusterOffset * scatterYClusterWeight) *
+        (scatterYBaseFactor + verticalNorm * scatterYDistanceFactor);
       const targetX = screenPos.x * 0.96 + (width * 0.5) * 0.04 + xScatter;
-      const topRatio = numberSetting(displaySettings.rankTopRatio, 0.1);
-      const bottomRatio = numberSetting(displaySettings.rankBottomRatio, 0.7);
+      const topRatio = verticalRangeTopRatio;
+      const bottomRatio = verticalRangeBottomRatio;
       const perspectiveNorm = toPerspectiveNorm(verticalNorm);
-      const tiltRangeDeg = Math.max(1, numberSetting(displaySettings.tiltPitchRangeDeg, 90));
-      const tiltCenterDeg = numberSetting(displaySettings.tiltPitchCenterDeg, 90);
-      const tiltInvert = !!displaySettings.tiltInvert;
+      const verticalDistributionNorm = Math.pow(clamp(perspectiveNorm, 0, 1), nonLinearExponent);
+      const tiltRangeDeg = Math.max(1, tiltPitchRangeDeg);
       // センサー値より実カメラ姿勢を優先し、端末実装差での過補正を抑える。
       const tiltBase = Number.isFinite(cameraPitchDeg)
         ? cameraPitchDeg
         : typeof devicePitchDeg === "number"
           ? devicePitchDeg
           : 0;
-      const tiltRaw = tiltBase - tiltCenterDeg;
+      const tiltRaw = tiltBase - tiltPitchCenterDeg;
       const tiltSignedRaw = clamp((tiltRaw / tiltRangeDeg) * (tiltInvert ? -1 : 1), -1, 1);
-      const tiltSigned = clamp(
-        tiltSignedRaw,
-        -numberSetting(displaySettings.tiltLayoutClamp, 0.35),
-        numberSetting(displaySettings.tiltLayoutClamp, 0.35)
-      );
-      const tiltMagnitude = Math.abs(tiltSigned);
-      const tiltShiftPx = height * numberSetting(displaySettings.tiltShiftRatio, 0.06) * -tiltSigned;
-      const tiltSpread = 1 + tiltMagnitude * numberSetting(displaySettings.tiltSpreadFactor, 0.5);
-      const yBase = height * (topRatio + (bottomRatio - topRatio) * perspectiveNorm);
-      const anchorBase = tiltSigned <= 0 ? height * topRatio : height * bottomRatio;
+      const tiltSigned = clamp(tiltSignedRaw, -tiltLayoutClamp, tiltLayoutClamp);
+      const layoutTiltSigned = -tiltSigned;
+      const tiltMagnitude = Math.abs(layoutTiltSigned);
+      const tiltShiftPx = height * tiltFollowShiftRatio * -layoutTiltSigned;
+      const tiltSpread = 1 + tiltMagnitude * tiltSpreadFactor;
+      const yBase = height * (topRatio + (bottomRatio - topRatio) * verticalDistributionNorm);
+      const anchorBase = layoutTiltSigned <= 0 ? height * topRatio : height * bottomRatio;
       const yLinearBase = anchorBase + (yBase - anchorBase) * tiltSpread + tiltShiftPx;
-      const yScatterCapPx = height * numberSetting(displaySettings.rankScatterRatio, 0.02);
+      const yScatterCapPx = height * rankScatterRatio;
       const edgeAttenuation = clamp(1 - Math.abs(verticalNorm - 0.5) * 2, 0, 1);
       const yScatterSigned = clamp(rawYScatter, -yScatterCapPx, yScatterCapPx) * edgeAttenuation;
       const baseSpan = height * (bottomRatio - topRatio);
       const extraSpan = baseSpan * (tiltSpread - 1);
-      const clampMin = tiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
-      const clampMax = tiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
-      const rankedY = clamp(
+      const clampMin =
+        layoutTiltSigned <= 0 ? height * topRatio + tiltShiftPx : height * topRatio + tiltShiftPx - extraSpan;
+      const clampMax =
+        layoutTiltSigned <= 0 ? height * bottomRatio + tiltShiftPx + extraSpan : height * bottomRatio + tiltShiftPx;
+      const rankedYBase = clamp(
         yLinearBase + yScatterSigned + arFieldYOffsetPx + height * autoAlignYOffsetRatio,
         clampMin,
         clampMax
       );
+      const tiltSpacingBoost = 1 + tiltMagnitude * tiltSpacingFactor;
+      const verticalCenter = (clampMin + clampMax) * 0.5;
+      const rankedY = clamp(verticalCenter + (rankedYBase - verticalCenter) * tiltSpacingBoost, clampMin, clampMax);
       // ランク配置だけだと水平時に遠方が画面外へ寄るため、実投影Yを混ぜて安定化する。
-      const targetY = rankedY * (1 - numberSetting(displaySettings.screenYProjectionBlend, 0.4)) +
-        screenPos.y * numberSetting(displaySettings.screenYProjectionBlend, 0.4);
+      const targetY = rankedY * (1 - screenYProjectionBlend) + screenPos.y * screenYProjectionBlend;
       if (typeof marker.screenX !== "number" || typeof marker.screenY !== "number") {
         marker.screenX = targetX;
         marker.screenY = targetY;
       } else {
         // Keep Y smoothing for stability but make X more responsive to panning.
-        marker.screenX += (targetX - marker.screenX) * numberSetting(displaySettings.screenXSmooth, 0.42);
-        marker.screenY += (targetY - marker.screenY) * numberSetting(displaySettings.screenYSmooth, 0.22);
+        marker.screenX += (targetX - marker.screenX) * screenXSmooth;
+        marker.screenY += (targetY - marker.screenY) * screenYSmooth;
       }
       layoutCandidates.push(marker);
     }
 
     if (overlapRepulsionEnabled) {
-      resolveMarkerOverlaps(layoutCandidates, width, height);
+      const overlapCandidates = [];
+      for (let i = 0; i < layoutCandidates.length; i++) {
+        const marker = layoutCandidates[i];
+        if (
+          marker.screenX < -offscreenMargin * 2 ||
+          marker.screenX > width + offscreenMargin * 2 ||
+          marker.screenY < -offscreenMargin * 2 ||
+          marker.screenY > height + offscreenMargin * 2
+        ) {
+          continue;
+        }
+        overlapCandidates.push(marker);
+      }
+      overlapSolveFrameCounter += 1;
+      if (overlapSolveFrameCounter % 3 === 0 && overlapCandidates.length > 1) {
+        resolveMarkerOverlaps(overlapCandidates, width, height);
+      }
     }
 
     for (let i = 0; i < layoutCandidates.length; i++) {
@@ -809,7 +1226,6 @@
     }
     visibleMarkerCount = visibleCount;
     updateMarkerStatusText();
-    updateTelemetry();
     if (selectedMarker && selectedMarker.root) {
       if (selectedMarker.root.style.display === "none") {
         clearSelection();
@@ -826,17 +1242,16 @@
     const tick = function () {
       markerRenderFrame = requestAnimationFrame(tick);
       updateScreenMarkers();
+      updateTelemetry();
+      updateCompassStrip();
     };
     markerRenderFrame = requestAnimationFrame(tick);
   }
 
   function computeAutoAlignYOffsetRatio(markers) {
-    if (!numberSetting(displaySettings.autoAlignEnabled, 1) || !Array.isArray(markers) || markers.length === 0) {
+    if (!autoAlignEnabled || !Array.isArray(markers) || markers.length === 0) {
       return 0;
     }
-    const targetYMinRatio = numberSetting(displaySettings.targetYMinRatio, -0.12);
-    const targetYMaxRatio = numberSetting(displaySettings.targetYMaxRatio, 0.7);
-    const verticalSpreadScale = numberSetting(displaySettings.verticalSpreadScale, 0.5);
     const distanceBandSpan = (targetYMaxRatio - targetYMinRatio) * verticalSpreadScale;
     const centers = [];
     for (let i = 0; i < markers.length; i++) {
@@ -864,8 +1279,8 @@
     });
     const mid = Math.floor(centers.length / 2);
     const median = centers.length % 2 === 0 ? (centers[mid - 1] + centers[mid]) * 0.5 : centers[mid];
-    const targetRatio = numberSetting(displaySettings.autoAlignTargetRatio, 0.52);
-    const maxShiftRatio = numberSetting(displaySettings.autoAlignMaxShiftRatio, 0.14);
+    const targetRatio = autoAlignTargetRatio;
+    const maxShiftRatio = autoAlignMaxShiftRatio;
     return clamp(targetRatio - median, -maxShiftRatio, maxShiftRatio);
   }
 
@@ -920,9 +1335,11 @@
     const count = candidates.length;
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
     const farthestDistance = count > 0 ? candidates[count - 1].distance : null;
+    const farthestDistanceRounded = farthestDistance !== null ? Math.round(farthestDistance) : null;
     updateCameraFarByDistance(farthestDistance);
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
-    const headingNow = deviceHeading === null ? 0 : deviceHeading;
+    const headingNowRaw = currentViewHeadingDeg();
+    const headingNow = headingNowRaw === null ? 0 : headingNowRaw;
     const laneSlots = new Map();
     const clusterSlots = new Map();
     function directedOffsetUnits(indexInGroup, verticalNorm, spreadCap, biasStrength) {
@@ -939,6 +1356,7 @@
     nearbyCandidateCount = allTweets.length;
     renderedMarkerCount = count;
     nearestDistanceMeters = nearestDistance;
+    farthestDistanceMeters = farthestDistanceRounded;
     for (let i = 0; i < count; i++) {
       const candidate = candidates[i];
       const t = candidate.tweet;
@@ -958,64 +1376,58 @@
       const clusterIndex = clusterSlots.get(clusterKey) || 0;
       clusterSlots.set(clusterKey, clusterIndex + 1);
       // Keep vertical offsets small; distance is represented by true depth.
-      const baseY = numberSetting(displaySettings.markerBaseY, 1.8);
-      const spreadStep = numberSetting(displaySettings.markerSpreadStep, 0.45);
+      const baseY = markerBaseY;
+      const spreadStep = markerSpreadStep;
       const laneOffset = directedOffsetUnits(
         laneIndex,
         verticalNorm,
-        numberSetting(displaySettings.markerLaneSpreadCap, 4.0),
-        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+        markerLaneSpreadCap,
+        markerVerticalBiasStrength
       );
       const clusterOffset = directedOffsetUnits(
         clusterIndex,
         verticalNorm,
-        numberSetting(displaySettings.markerClusterSpreadCap, 3.0),
-        numberSetting(displaySettings.markerVerticalBiasStrength, 0.8)
+        markerClusterSpreadCap,
+        markerVerticalBiasStrength
       );
-      const laneCrowd = Math.min(laneIndex, numberSetting(displaySettings.markerLaneCrowdCap, 6));
-      const clusterCrowd = Math.min(clusterIndex, numberSetting(displaySettings.markerClusterCrowdCap, 6));
+      const laneCrowd = Math.min(laneIndex, markerLaneCrowdCap);
+      const clusterCrowd = Math.min(clusterIndex, markerClusterCrowdCap);
       const densityBoost =
         1 +
         Math.min(
-          numberSetting(displaySettings.markerDensityMaxAdd, 2.0),
-          clusterCrowd * numberSetting(displaySettings.markerDensityClusterFactor, 0.2) +
-            laneCrowd * numberSetting(displaySettings.markerDensityLaneFactor, 0.1)
+          markerDensityMaxAdd,
+          clusterCrowd * markerDensityClusterFactor + laneCrowd * markerDensityLaneFactor
         );
-      const combinedOffset =
-        laneOffset + clusterOffset * numberSetting(displaySettings.markerClusterOffsetWeight, 1.8);
+      const combinedOffset = laneOffset + clusterOffset * markerClusterOffsetWeight;
       const markerY = clamp(
         baseY + combinedOffset * spreadStep * densityBoost,
-        numberSetting(displaySettings.markerYMin, 0.6),
-        numberSetting(displaySettings.markerYMax, 7.5)
+        markerYMin,
+        markerYMax
       );
       const iconSize = clamp(
-        numberSetting(displaySettings.iconSizeMax, 86) -
-          distanceNorm * numberSetting(displaySettings.iconSizeDistanceFactor, 74),
-        numberSetting(displaySettings.iconSizeMin, 12),
-        numberSetting(displaySettings.iconSizeMax, 86)
+        iconSizeMaxPx - distanceNorm * iconSizeDistanceFactor,
+        iconSizeMinPx,
+        iconSizeMaxPx
       );
       const label = toLabel(t.text);
       const labelFontNorm = verticalNorm;
       const labelFontPx = Math.round(
         clamp(
-          numberSetting(displaySettings.labelFontMax, 44) -
-            labelFontNorm * numberSetting(displaySettings.labelFontDistanceFactor, 34),
-          numberSetting(displaySettings.labelFontMin, 10),
-          numberSetting(displaySettings.labelFontMax, 44)
+          labelSizeMaxPx - labelFontNorm * labelSizeDistanceFactor,
+          labelSizeMinPx,
+          labelSizeMaxPx
         )
       );
       const opacityNorm = toPerspectiveNorm(verticalNorm);
       const iconOpacity = clamp(
-        numberSetting(displaySettings.iconOpacityStart, 0.98) -
-          opacityNorm * numberSetting(displaySettings.iconOpacityDistanceFactor, 0.62),
-        numberSetting(displaySettings.iconOpacityMin, 0.36),
-        numberSetting(displaySettings.iconOpacityMax, 0.98)
+        iconOpacityMax - opacityNorm * iconOpacityDistanceFactor,
+        iconOpacityMin,
+        iconOpacityMax
       );
       const labelOpacity = clamp(
-        numberSetting(displaySettings.labelOpacityStart, 0.99) -
-          opacityNorm * numberSetting(displaySettings.labelOpacityDistanceFactor, 0.68),
-        numberSetting(displaySettings.labelOpacityMin, 0.31),
-        numberSetting(displaySettings.labelOpacityMax, 0.99)
+        labelOpacityMax - opacityNorm * labelOpacityDistanceFactor,
+        labelOpacityMin,
+        labelOpacityMax
       );
       const worldPosition = new THREE.Vector3(x, markerY, z);
 
@@ -1038,13 +1450,6 @@
       labelSpan.style.opacity = labelOpacity.toFixed(2);
       root.appendChild(labelSpan);
 
-      const onSelect = function () {
-        selectMarker(marker);
-      };
-      root.addEventListener("click", onSelect);
-      root.addEventListener("touchstart", onSelect, { passive: true });
-      icon.addEventListener("click", onSelect);
-      labelSpan.addEventListener("click", onSelect);
       markerLayer.appendChild(root);
 
       const marker = {
@@ -1064,18 +1469,18 @@
         tweetText: t.text,
         distanceMeters: String(Math.round(distance)),
         distanceRawMeters: distance,
-        boxWidth: root.offsetWidth || 140,
-        boxHeight: root.offsetHeight || 42,
+        boxWidth: 140,
+        boxHeight: 42,
         overlapLevel: 0,
         vibrationPhase: Math.random() * Math.PI * 2,
         overlapOffsetX: 0,
         overlapOffsetY: 0,
       };
+      root.__markerRef = marker;
       markerEntities.push(marker);
     }
     const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
-    autoAlignYOffsetRatio +=
-      (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * numberSetting(displaySettings.autoAlignLerp, 0.35);
+    autoAlignYOffsetRatio += (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * autoAlignLerp;
     updateScreenMarkers();
     updateMarkerStatusText();
     lastBuildPosition = {
@@ -1152,24 +1557,39 @@
   }
 
   function bindOrientationDiagnostics() {
-    window.addEventListener(
-      "deviceorientation",
-      function (event) {
+    const onOrientation = function (event) {
+        let rawHeading = null;
+        let headingAccuracy = null;
         if (typeof event.webkitCompassHeading === "number") {
-          deviceHeading = event.webkitCompassHeading;
-        } else if (event.absolute && typeof event.alpha === "number") {
-          deviceHeading = (360 - event.alpha) % 360;
+          rawHeading = normalizeHeadingDeg(event.webkitCompassHeading);
+          if (typeof event.webkitCompassAccuracy === "number" && Number.isFinite(event.webkitCompassAccuracy)) {
+            headingAccuracy = Math.abs(event.webkitCompassAccuracy);
+          }
+        } else if (typeof event.alpha === "number") {
+          rawHeading = normalizeHeadingDeg(360 - event.alpha);
+        }
+        if (rawHeading !== null) {
+          if (headingAccuracy === null || headingAccuracy < 180) {
+            let lerp = headingSmoothingLerp;
+            if (typeof headingAccuracy === "number" && headingAccuracy > 0) {
+              const accuracyWeight = clamp(maxCompassAccuracyDeg / headingAccuracy, 0.2, 1);
+              lerp = clamp(headingSmoothingLerp * accuracyWeight, 0.03, 1);
+            }
+            deviceHeading = smoothHeadingDeg(deviceHeading, rawHeading, lerp);
+          }
+          deviceHeadingAccuracy = headingAccuracy;
         }
         const pitchDeg = readDevicePitchDeg(event);
         if (typeof pitchDeg === "number" && Number.isFinite(pitchDeg)) {
           devicePitchDeg = devicePitchDeg === null ? pitchDeg : devicePitchDeg * 0.8 + pitchDeg * 0.2;
         }
+        collectHeadingCalibrationSample();
         if (deviceHeading !== null && currentPosition && dataLoaded && !lastBuildPosition && markerEntities.length === 0) {
           scheduleBuild(true);
         }
-      },
-      true
-    );
+    };
+    window.addEventListener("deviceorientation", onOrientation, true);
+    window.addEventListener("deviceorientationabsolute", onOrientation, true);
   }
 
   function requestCameraPermission() {
@@ -1284,6 +1704,7 @@
     if (arStarting) {
       return;
     }
+    resetHeadingCalibration();
     if (!isMobileOrTablet) {
       setLaunchStatus("AR版はスマートフォン・タブレット専用です。地図版をご利用ください。");
       return;
@@ -1331,6 +1752,82 @@
       });
   }
 
+  function persistMapReturnLocation() {
+    if (!window.sessionStorage || !currentPosition || !currentPosition.coords) {
+      return;
+    }
+    const lat = Number(currentPosition.coords.latitude);
+    const lon = Number(currentPosition.coords.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        mapReturnLocationKey,
+        JSON.stringify({
+          lat: lat,
+          lon: lon,
+          accuracy: Number(currentPosition.coords.accuracy) || null,
+          timestamp: Date.now(),
+        })
+      );
+    } catch (error) {
+      // Ignore storage errors (private mode or restricted context).
+    }
+  }
+
+  function buildMapReturnUrl(lat, lon) {
+    const ts = Date.now();
+    const url =
+      "index.html?ar_return=1&ar_return_lat=" +
+      encodeURIComponent(String(lat)) +
+      "&ar_return_lon=" +
+      encodeURIComponent(String(lon)) +
+      "&ar_return_ts=" +
+      encodeURIComponent(String(ts));
+    return url;
+  }
+
+  function navigateToMap() {
+    const fallbackLat =
+      currentPosition && currentPosition.coords ? Number(currentPosition.coords.latitude) : NaN;
+    const fallbackLon =
+      currentPosition && currentPosition.coords ? Number(currentPosition.coords.longitude) : NaN;
+
+    if (Number.isFinite(fallbackLat) && Number.isFinite(fallbackLon)) {
+      persistMapReturnLocation();
+      window.location.href = buildMapReturnUrl(fallbackLat, fallbackLon);
+      return;
+    }
+
+    if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== "function") {
+      window.location.href = "index.html?ar_return=1";
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        currentPosition = position;
+        persistMapReturnLocation();
+        const lat = Number(position.coords.latitude);
+        const lon = Number(position.coords.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          window.location.href = buildMapReturnUrl(lat, lon);
+          return;
+        }
+        window.location.href = "index.html?ar_return=1";
+      },
+      function () {
+        window.location.href = "index.html?ar_return=1";
+      },
+      {
+        enableHighAccuracy: !!geolocationConfig.enableHighAccuracy,
+        timeout: 2500,
+        maximumAge: 0,
+      }
+    );
+  }
+
   window.addEventListener("pagehide", function () {
     if (buildTimer !== null) {
       clearTimeout(buildTimer);
@@ -1349,6 +1846,11 @@
       tracks[i].stop();
     }
     cameraStream = null;
+  });
+
+  window.addEventListener("resize", function () {
+    buildCompassTrack();
+    updateCompassStrip();
   });
 
   if (debugToggle) {
@@ -1374,6 +1876,15 @@
   }
 
   setupLocationPickerUI();
+  buildCompassTrack();
+  updateCompassStrip();
+
+  if (mapButton) {
+    mapButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      navigateToMap();
+    });
+  }
 
   if (!isMobileOrTablet) {
     setLaunchStatus("AR版はスマートフォン・タブレット専用です。\n右上のMAPから地図版へ戻れます。");

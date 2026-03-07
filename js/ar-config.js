@@ -6,7 +6,7 @@ window.AR_CONFIG = {
   twitterIconUrl: "data/icon/flags/twitter.png",
 
   // 位置情報の再取得間隔（ミリ秒）
-  locationPollIntervalMs: 5000,
+  locationPollIntervalMs: 30000,
 
   // 権限許可のキャッシュキー（localStorage）
   permissionCacheKey: "tweetMappingArPermissionGrantedAt",
@@ -21,7 +21,7 @@ window.AR_CONFIG = {
     useTestLocationByDefault: false,
 
     // DEBUGスイッチUIを表示するか
-    showToggle: true,
+    showToggle: false,
 
     // DEBUGスイッチON時に使う固定座標
     // 仙台市役所付近: 緯度 38.268721, 経度 140.869407
@@ -33,85 +33,42 @@ window.AR_CONFIG = {
 
   geolocation: {
     // 端末の現在地取得オプション
-    enableHighAccuracy: false,
-    maximumAgeMs: 5000,
-    timeoutMs: 30000,
+    enableHighAccuracy: true,
+    maximumAgeMs: 0,
+    timeoutMs: 45000,
+  },
+
+  heading: {
+    // 方位の平滑化係数（0に近いほど安定、1に近いほど追従）
+    smoothingLerp: 0.18,
+    // iOS SafariのwebKit方位精度がこの値(度)より悪い場合は採用しない
+    maxCompassAccuracyDeg: 35,
+    // 起動時キャリブレーションで集める方位サンプル数
+    calibrationSampleCount: 8,
+    // 起動時キャリブレーションの最大待機時間（ミリ秒）
+    calibrationMaxWaitMs: 2500,
   },
 
   // ARマーカーの見え方・配置を調整する表示パラメータ
   displaySettings: {
-    maxMarkers: 100,
-    rebuildThresholdMeters: 30,
-    minBuildIntervalMs: 1200,
-    maxLabelChars: 26,
-    arFieldYOffsetPx: 0,
-    offscreenMargin: 48,
-    laneStepDeg: 2.8,
-    clusterStepDeg: 8.0,
-    xScatterLaneWeight: 34,
-    xScatterClusterWeight: 56,
-    xScatterBaseFactor: 0.8,
-    xScatterDistanceFactor: 1.2,
-    xScatterNearMeters: 1000,
-    xScatterFarMeters: 100000,
-    xScatterFarScale: 0.05,
-    xScatterDistanceExponent: 0.85,
-    yScatterLaneWeight: 17.5,
-    yScatterClusterWeight: 30,
-    yScatterBaseFactor: 0.4375,
-    yScatterDistanceFactor: 0.6875,
-    yScatterUpMultiplier: 2.76,
-    yScatterDownMultiplier: 0.82,
-    distanceYOffsetFactor: 0.32,
-    tiltPivotRatio: 0.35,
-    tiltReduceFactor: 0.52,
-    tiltClampUpRatio: 0.14,
-    tiltClampDownRatio: 0.14,
-    targetYMinRatio: -0.12,
-    targetYMaxRatio: 0.7,
-    verticalSpreadScale: 0.5,
-    autoAlignEnabled: 0,
-    autoAlignTargetRatio: 0.49,
-    autoAlignMaxShiftRatio: 0.14,
-    autoAlignLerp: 0.35,
-    rankTopRatio: 0.1,
-    rankBottomRatio: 0.7,
-    rankPerspectiveStrength: 3.0,
-    rankScatterRatio: 0.02,
-    tiltPitchRangeDeg: 90,
-    tiltPitchCenterDeg: 90,
-    tiltShiftRatio: 0.06,
-    tiltSpreadFactor: 0.5,
-    tiltInvert: true,
-    tiltLayoutClamp: 0.35,
-    screenYProjectionBlend: 0.4,
-    screenXSmooth: 0.42,
-    screenYSmooth: 0.22,
-    cameraFarDefault: 12000,
-    cameraFarPaddingFactor: 1.25,
-    cameraFarMin: 12000,
-    cameraFarMax: 20000000,
-    markerBaseY: 1.8,
-    markerSpreadStep: 0.45,
-    markerDensityClusterFactor: 0.2,
-    markerDensityLaneFactor: 0.1,
-    markerDensityMaxAdd: 2.0,
-    markerClusterOffsetWeight: 1.8,
-    markerYMin: 0.6,
-    markerYMax: 7.5,
-    iconSizeMax: 38,
-    iconSizeMin: 5,
-    iconSizeDistanceFactor: 33,
-    labelFontMax: 31,
-    labelFontMin: 10,
-    labelFontDistanceFactor: 34,
-    iconOpacityStart: 0.98,
-    iconOpacityDistanceFactor: 0.62,
+    // マーカ分布の上端・下端
+    verticalRangeTopRatio: 0.0,
+    verticalRangeBottomRatio: 0.8,
+    // マーカ（ラベル）サイズの最大値・最小値
+    iconSizeMinPx: 5,
+    iconSizeMaxPx: 38,
+    labelSizeMinPx: 10,
+    labelSizeMaxPx: 31,
+    // マーカ（ラベル）透明度の最大値・最小値
     iconOpacityMin: 0.36,
     iconOpacityMax: 0.98,
-    labelOpacityStart: 0.99,
-    labelOpacityDistanceFactor: 0.34,
     labelOpacityMin: 0.65,
     labelOpacityMax: 0.99,
+    // 変化率（非線形）
+    nonLinearExponent: 0.36,
+    // スマホのティルトに追従して上下動する幅
+    tiltFollowShiftRatio: 0.06,
+    // スマホのティルトに追従してマーカ間隔を拡大する率
+    tiltSpacingFactor: 3.0,
   },
 };
