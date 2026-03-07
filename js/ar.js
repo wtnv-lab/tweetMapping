@@ -663,6 +663,9 @@
     headingCalibrationOffsetDeg = meanDelta;
     headingCalibrationDone = true;
     setStatus("方位キャリブレーション完了。");
+    if (currentPosition && dataLoaded) {
+      scheduleBuild(true);
+    }
   }
 
   function collectHeadingCalibrationSample() {
@@ -1335,7 +1338,8 @@
     const farthestDistanceRounded = farthestDistance !== null ? Math.round(farthestDistance) : null;
     updateCameraFarByDistance(farthestDistance);
     const distanceSpan = farthestDistance !== null && nearestDistance !== null ? Math.max(1, farthestDistance - nearestDistance) : 1;
-    const headingNow = deviceHeading === null ? 0 : deviceHeading;
+    const headingNowRaw = currentViewHeadingDeg();
+    const headingNow = headingNowRaw === null ? 0 : headingNowRaw;
     const laneSlots = new Map();
     const clusterSlots = new Map();
     function directedOffsetUnits(indexInGroup, verticalNorm, spreadCap, biasStrength) {
