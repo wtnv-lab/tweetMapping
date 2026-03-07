@@ -76,6 +76,8 @@
   const maxMarkers = 100;
   const rebuildThresholdMeters = 30;
   const minBuildIntervalMs = 1200;
+  const tweetGridCellSizeDeg = 0.02;
+  const tweetGridSearchRadius = 6;
   const maxLabelChars = 26;
   const arFieldYOffsetPx = 0;
   const offscreenMargin = 48;
@@ -162,6 +164,7 @@
   let currentPosition = null;
   let lastBuildPosition = null;
   let markerEntities = [];
+  let markerPool = [];
   let dataLoaded = false;
   let scene = null;
   let cameraStream = null;
@@ -190,6 +193,8 @@
   let selectedCityIndex = -1;
   let locationSourceButton = null;
   let locationSourceSelect = null;
+  let tweetSpatialGrid = new Map();
+  const tweetById = new Map();
   let compassSegmentWidthPx = 360 * compassPxPerDeg;
   let headingCalibrationOffsetDeg = null;
   let headingCalibrationStartedAt = 0;
@@ -836,18 +841,166 @@
     return 1 - (1 - farScale) * eased;
   }
 
+  function normalizeTweetsFromJson(json) {
+    const sourceTweets = Array.isArray(json) ? json : json && Array.isArray(json.tweets) ? json.tweets : [];
+    const normalized = [];
+    for (let i = 0; i < sourceTweets.length; i++) {
+      const item = sourceTweets[i];
+      if (!item) {
+        continue;
+      }
+      let lon = Number(item.lon);
+      let lat = Number(item.lat);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        const coords = item.position && item.position.cartographicDegrees;
+        if (!Array.isArray(coords) || coords.length < 2) {
+          continue;
+        }
+        lon = Number(coords[0]);
+        lat = Number(coords[1]);
+      }
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        continue;
+      }
+      normalized.push({
+        id: String(item.id),
+        text: String(item.text || ""),
+        lat: lat,
+        lon: lon,
+      });
+    }
+    return normalized;
+  }
+
+  function tweetGridKey(lat, lon) {
+    const latIndex = Math.floor((lat + 90) / tweetGridCellSizeDeg);
+    const lonIndex = Math.floor((lon + 180) / tweetGridCellSizeDeg);
+    return latIndex + ":" + lonIndex;
+  }
+
+  function rebuildTweetSpatialGrid() {
+    tweetSpatialGrid = new Map();
+    allTweets = Array.from(tweetById.values());
+    for (let i = 0; i < allTweets.length; i++) {
+      const tweet = allTweets[i];
+      const key = tweetGridKey(tweet.lat, tweet.lon);
+      if (!tweetSpatialGrid.has(key)) {
+        tweetSpatialGrid.set(key, []);
+      }
+      tweetSpatialGrid.get(key).push(tweet);
+    }
+    nearbyCandidateCount = allTweets.length;
+  }
+
+  function collectTweetsNearPosition(lat, lon, limit) {
+    if (allTweets.length <= limit || tweetSpatialGrid.size === 0) {
+      return allTweets;
+    }
+    const latIndex = Math.floor((lat + 90) / tweetGridCellSizeDeg);
+    const lonIndex = Math.floor((lon + 180) / tweetGridCellSizeDeg);
+    const candidates = [];
+    const seenIds = new Set();
+    const targetCount = Math.max(limit * 4, limit + 24);
+
+    for (let radius = 0; radius <= tweetGridSearchRadius && candidates.length < targetCount; radius++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (radius > 0 && Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+            continue;
+          }
+          const key = latIndex + dy + ":" + (lonIndex + dx);
+          const bucket = tweetSpatialGrid.get(key);
+          if (!bucket) {
+            continue;
+          }
+          for (let i = 0; i < bucket.length; i++) {
+            const tweet = bucket[i];
+            if (seenIds.has(tweet.id)) {
+              continue;
+            }
+            seenIds.add(tweet.id);
+            candidates.push(tweet);
+          }
+        }
+      }
+    }
+
+    return candidates.length > 0 ? candidates : allTweets;
+  }
+
+  function createMarkerFromPool() {
+    const root = document.createElement("div");
+    root.className = "screen-marker tweet-hit";
+    root.style.display = "none";
+
+    const icon = document.createElement("img");
+    icon.className = "screen-marker-icon tweet-hit";
+    icon.src = twitterIconUrl;
+    icon.alt = "";
+    root.appendChild(icon);
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "screen-marker-label tweet-hit";
+    root.appendChild(labelSpan);
+
+    markerLayer.appendChild(root);
+
+    const marker = {
+      root: root,
+      icon: icon,
+      label: labelSpan,
+      worldPosition: new THREE.Vector3(),
+      ratio: 0,
+      verticalNorm: 0,
+      distanceNorm: 0,
+      laneOffset: 0,
+      clusterOffset: 0,
+      screenX: null,
+      screenY: null,
+      iconBaseOpacity: 1,
+      labelBaseOpacity: 1,
+      tweetText: "",
+      distanceMeters: "0",
+      distanceRawMeters: 0,
+      boxWidth: 140,
+      boxHeight: 42,
+      overlapLevel: 0,
+      vibrationPhase: Math.random() * Math.PI * 2,
+      overlapOffsetX: 0,
+      overlapOffsetY: 0,
+    };
+    root.__markerRef = marker;
+    return marker;
+  }
+
+  function ensureMarkerPoolSize(size) {
+    while (markerPool.length < size) {
+      markerPool.push(createMarkerFromPool());
+    }
+  }
+
+  function hideMarker(marker) {
+    if (!marker || !marker.root) {
+      return;
+    }
+    marker.root.style.display = "none";
+    marker.root.style.removeProperty("--marker-x");
+    marker.root.style.removeProperty("--marker-y");
+    marker.screenX = null;
+    marker.screenY = null;
+    marker.overlapLevel = 0;
+    marker.overlapOffsetX = 0;
+    marker.overlapOffsetY = 0;
+  }
+
   function clearMarkers() {
     clearSelection();
     if (buildTimer !== null) {
       clearTimeout(buildTimer);
       buildTimer = null;
     }
-    for (let i = 0; i < markerEntities.length; i++) {
-      const marker = markerEntities[i].root;
-      if (marker && marker.parentNode) {
-        marker.__markerRef = null;
-        marker.parentNode.removeChild(marker);
-      }
+    for (let i = 0; i < markerPool.length; i++) {
+      hideMarker(markerPool[i]);
     }
     markerEntities = [];
     autoAlignYOffsetRatio = 0;
@@ -996,8 +1149,15 @@
     const maxY = viewportHeight + offscreenMargin;
     const resolvedY = new Array(markers.length);
     const bucketWidth = 180;
+    const bucketHeight = 64;
     const bucketMap = new Map();
-    const markerBucketIds = new Array(markers.length);
+    const neighborOffsets = [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+      [-1, 1],
+    ];
 
     for (let i = 0; i < markers.length; i++) {
       const marker = markers[i];
@@ -1009,72 +1169,53 @@
         marker.overlapOffsetY = 0;
       }
       resolvedY[i] = marker.screenY;
-      const bucketId = Math.floor(marker.screenX / bucketWidth);
-      markerBucketIds[i] = bucketId;
-      if (!bucketMap.has(bucketId)) {
-        bucketMap.set(bucketId, []);
+      const bucketX = Math.floor(marker.screenX / bucketWidth);
+      const bucketY = Math.floor(marker.screenY / bucketHeight);
+      const bucketKey = bucketX + ":" + bucketY;
+      if (!bucketMap.has(bucketKey)) {
+        bucketMap.set(bucketKey, []);
       }
-      bucketMap.get(bucketId).push(i);
+      bucketMap.get(bucketKey).push(i);
     }
-    const bucketIds = Array.from(bucketMap.keys()).sort(function (a, b) {
-      return a - b;
-    });
+    const bucketKeys = Array.from(bucketMap.keys());
 
     for (let iter = 0; iter < iterations; iter++) {
       let moved = false;
-      for (let b = 0; b < bucketIds.length; b++) {
-        const bucketId = bucketIds[b];
-        const currentIndices = bucketMap.get(bucketId) || [];
-        const nextIndices = bucketMap.get(bucketId + 1) || [];
-        for (let ai = 0; ai < currentIndices.length; ai++) {
-          const i = currentIndices[ai];
-          const a = markers[i];
-          for (let aj = ai + 1; aj < currentIndices.length; aj++) {
-            const j = currentIndices[aj];
-            const bMarker = markers[j];
-            const dx = bMarker.screenX - a.screenX;
-            const dy = resolvedY[j] - resolvedY[i];
-            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
-            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
-            const overlapX = halfW - Math.abs(dx);
-            const overlapY = halfH - Math.abs(dy);
-            if (overlapX <= 0 || overlapY <= 0) {
-              continue;
+      for (let b = 0; b < bucketKeys.length; b++) {
+        const parts = bucketKeys[b].split(":");
+        const bucketX = Number(parts[0]);
+        const bucketY = Number(parts[1]);
+        const currentIndices = bucketMap.get(bucketKeys[b]) || [];
+        for (let ni = 0; ni < neighborOffsets.length; ni++) {
+          const neighborOffset = neighborOffsets[ni];
+          const neighborKey = bucketX + neighborOffset[0] + ":" + (bucketY + neighborOffset[1]);
+          const neighborIndices = bucketMap.get(neighborKey) || [];
+          for (let ai = 0; ai < currentIndices.length; ai++) {
+            const i = currentIndices[ai];
+            const a = markers[i];
+            const startIndex = neighborKey === bucketKeys[b] ? ai + 1 : 0;
+            for (let aj = startIndex; aj < neighborIndices.length; aj++) {
+              const j = neighborIndices[aj];
+              const bMarker = markers[j];
+              const dx = bMarker.screenX - a.screenX;
+              const dy = resolvedY[j] - resolvedY[i];
+              const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
+              const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
+              const overlapX = halfW - Math.abs(dx);
+              const overlapY = halfH - Math.abs(dy);
+              if (overlapX <= 0 || overlapY <= 0) {
+                continue;
+              }
+              moved = true;
+              a.overlapLevel += 1;
+              bMarker.overlapLevel += 1;
+              const pushY = (overlapY + padding) * 0.5 * pushStrength;
+              const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
+              const topIndex = aIsNearer ? i : j;
+              const bottomIndex = aIsNearer ? j : i;
+              resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
+              resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
             }
-            moved = true;
-            a.overlapLevel += 1;
-            bMarker.overlapLevel += 1;
-            const pushY = (overlapY + padding) * 0.5 * pushStrength;
-            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
-            const topIndex = aIsNearer ? i : j;
-            const bottomIndex = aIsNearer ? j : i;
-            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
-            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
-          }
-          for (let nj = 0; nj < nextIndices.length; nj++) {
-            const j = nextIndices[nj];
-            const bMarker = markers[j];
-            if (markerBucketIds[j] - markerBucketIds[i] > 1) {
-              continue;
-            }
-            const dx = bMarker.screenX - a.screenX;
-            const dy = resolvedY[j] - resolvedY[i];
-            const halfW = (a.boxWidth + bMarker.boxWidth) * 0.5 + padding;
-            const halfH = (a.boxHeight + bMarker.boxHeight) * 0.5 + padding;
-            const overlapX = halfW - Math.abs(dx);
-            const overlapY = halfH - Math.abs(dy);
-            if (overlapX <= 0 || overlapY <= 0) {
-              continue;
-            }
-            moved = true;
-            a.overlapLevel += 1;
-            bMarker.overlapLevel += 1;
-            const pushY = (overlapY + padding) * 0.5 * pushStrength;
-            const aIsNearer = a.distanceNorm <= bMarker.distanceNorm;
-            const topIndex = aIsNearer ? i : j;
-            const bottomIndex = aIsNearer ? j : i;
-            resolvedY[topIndex] = clamp(resolvedY[topIndex] - pushY, minY, maxY);
-            resolvedY[bottomIndex] = clamp(resolvedY[bottomIndex] + pushY, minY, maxY);
           }
         }
       }
@@ -1219,8 +1360,8 @@
         continue;
       }
       marker.root.style.display = "inline-flex";
-      marker.root.style.left = drawX.toFixed(1) + "px";
-      marker.root.style.top = drawY.toFixed(1) + "px";
+      marker.root.style.setProperty("--marker-x", drawX.toFixed(1) + "px");
+      marker.root.style.setProperty("--marker-y", drawY.toFixed(1) + "px");
       marker.root.style.zIndex = String(10000 - Math.round(marker.distanceNorm * 8000));
       visibleCount += 1;
     }
@@ -1292,11 +1433,12 @@
 
     const lat = currentPosition.coords.latitude;
     const lon = currentPosition.coords.longitude;
+    const candidateTweets = collectTweetsNearPosition(lat, lon, maxMarkers);
     const candidates = [];
     let farthestSelectedDistance = 0;
 
-    for (let i = 0; i < allTweets.length; i++) {
-      const t = allTweets[i];
+    for (let i = 0; i < candidateTweets.length; i++) {
+      const t = candidateTweets[i];
       const distance = haversineMeters(lat, lon, t.lat, t.lon);
       const entry = {
         tweet: t,
@@ -1331,6 +1473,7 @@
     });
 
     clearMarkers();
+    ensureMarkerPoolSize(maxMarkers);
 
     const count = candidates.length;
     const nearestDistance = count > 0 ? Math.round(candidates[0].distance) : null;
@@ -1353,7 +1496,7 @@
       const verticalBias = (0.5 - verticalNorm) * biasStrength;
       return clamp(zigzag + verticalBias, -spreadCap, spreadCap);
     }
-    nearbyCandidateCount = allTweets.length;
+    nearbyCandidateCount = candidateTweets.length;
     renderedMarkerCount = count;
     nearestDistanceMeters = nearestDistance;
     farthestDistanceMeters = farthestDistanceRounded;
@@ -1431,53 +1574,38 @@
       );
       const worldPosition = new THREE.Vector3(x, markerY, z);
 
-      const root = document.createElement("div");
-      root.className = "screen-marker tweet-hit";
+      const marker = markerPool[i];
+      const root = marker.root;
       root.style.fontSize = labelFontPx.toFixed(1) + "px";
-
-      const icon = document.createElement("img");
-      icon.className = "screen-marker-icon tweet-hit";
-      icon.src = twitterIconUrl;
-      icon.alt = "";
+      const icon = marker.icon;
       icon.style.width = iconSize.toFixed(1) + "px";
       icon.style.height = iconSize.toFixed(1) + "px";
       icon.style.opacity = iconOpacity.toFixed(2);
-      root.appendChild(icon);
-
-      const labelSpan = document.createElement("span");
-      labelSpan.className = "screen-marker-label tweet-hit";
+      const labelSpan = marker.label;
       labelSpan.textContent = label;
       labelSpan.style.opacity = labelOpacity.toFixed(2);
-      root.appendChild(labelSpan);
-
-      markerLayer.appendChild(root);
-
-      const marker = {
-        root: root,
-        icon: icon,
-        label: labelSpan,
-        worldPosition: worldPosition,
-        ratio: verticalNorm,
-        verticalNorm: verticalNorm,
-        distanceNorm: distanceNorm,
-        laneOffset: laneOffset,
-        clusterOffset: clusterOffset,
-        screenX: null,
-        screenY: null,
-        iconBaseOpacity: iconOpacity,
-        labelBaseOpacity: labelOpacity,
-        tweetText: t.text,
-        distanceMeters: String(Math.round(distance)),
-        distanceRawMeters: distance,
-        boxWidth: 140,
-        boxHeight: 42,
-        overlapLevel: 0,
-        vibrationPhase: Math.random() * Math.PI * 2,
-        overlapOffsetX: 0,
-        overlapOffsetY: 0,
-      };
-      root.__markerRef = marker;
+      marker.worldPosition.copy(worldPosition);
+      marker.ratio = verticalNorm;
+      marker.verticalNorm = verticalNorm;
+      marker.distanceNorm = distanceNorm;
+      marker.laneOffset = laneOffset;
+      marker.clusterOffset = clusterOffset;
+      marker.screenX = null;
+      marker.screenY = null;
+      marker.iconBaseOpacity = iconOpacity;
+      marker.labelBaseOpacity = labelOpacity;
+      marker.tweetText = t.text;
+      marker.distanceMeters = String(Math.round(distance));
+      marker.distanceRawMeters = distance;
+      marker.boxWidth = Math.max(96, Math.round(iconSize + label.length * labelFontPx * 0.62 + 26));
+      marker.boxHeight = Math.max(32, Math.round(labelFontPx * 1.9));
+      marker.overlapLevel = 0;
+      marker.overlapOffsetX = 0;
+      marker.overlapOffsetY = 0;
       markerEntities.push(marker);
+    }
+    for (let i = count; i < markerPool.length; i++) {
+      hideMarker(markerPool[i]);
     }
     const nextAutoAlignYOffsetRatio = computeAutoAlignYOffsetRatio(markerEntities);
     autoAlignYOffsetRatio += (nextAutoAlignYOffsetRatio - autoAlignYOffsetRatio) * autoAlignLerp;
@@ -1518,27 +1646,14 @@
         return response.json();
       })
       .then(function (json) {
-        const tweets = [];
-        for (let i = 0; i < json.length; i++) {
-          const item = json[i];
-          const coords = item && item.position && item.position.cartographicDegrees;
-          if (!Array.isArray(coords) || coords.length < 2) {
-            continue;
-          }
-          const lon = Number(coords[0]);
-          const lat = Number(coords[1]);
-          if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
-            continue;
-          }
-          tweets.push({
-            id: String(item.id),
-            text: String(item.text || ""),
-            lat: lat,
-            lon: lon,
-          });
-        }
+        const tweets = normalizeTweetsFromJson(json);
         allTweets = tweets;
-        dataLoaded = true;
+        tweetById.clear();
+        for (let i = 0; i < tweets.length; i++) {
+          tweetById.set(tweets[i].id, tweets[i]);
+        }
+        rebuildTweetSpatialGrid();
+        dataLoaded = allTweets.length > 0;
       });
   }
 

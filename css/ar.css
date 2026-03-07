@@ -48,8 +48,9 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 0.28em;
-  transform: translate(-50%, -50%);
+  transform: translate3d(var(--marker-x, 0px), var(--marker-y, 0px), 0) translate(-50%, -50%) scale(var(--marker-scale, 1));
   transform-origin: center center;
+  will-change: transform;
   pointer-events: auto;
   user-select: none;
   -webkit-user-select: none;
@@ -62,7 +63,7 @@ html, body {
 
 .screen-marker.selected {
   filter: drop-shadow(0 0 10px rgba(80, 170, 255, 0.9));
-  transform: translate(-50%, -50%) scale(1.08);
+  --marker-scale: 1.08;
 }
 
 .screen-marker-icon {

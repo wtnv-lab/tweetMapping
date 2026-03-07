@@ -68,6 +68,9 @@
   const loadedTileKeys = new Set();
   const loadingTileKeys = new Set();
   const tileTweetIds = new Map();
+  const tweetIconImageByName = new Map();
+  const billboardPool = [];
+  const labelPool = [];
 
   let tweetTileIndex = null;
   let isInitialTilesLoaded = false;
@@ -87,6 +90,7 @@
   let locationWatchId = null;
   let lastTrackingCameraUpdateAt = 0;
   let lastTrackingCameraPosition = null;
+  let currentVisibleTileKeys = new Set();
   const isSmartphone = detectSmartphoneContext();
   const isArReturnNavigation = detectArReturnNavigation();
   const arReturnLocation = consumeArReturnLocation();
@@ -429,37 +433,55 @@
     }
 
     const canvas = viewer.scene.canvas;
-    for (let i = 0; i < tweetBillboards.length; i++) {
-      const billboard = tweetBillboards.get(i);
-      const label = tweetLabels.get(i);
-
-      if (visibleFilterIds && !visibleFilterIds.has(billboard.id)) {
-        billboard.show = false;
-        label.show = false;
-        continue;
+    loadedTileKeys.forEach(function (tileKey) {
+      const tweetIds = tileTweetIds.get(tileKey);
+      const tileVisible = currentVisibleTileKeys.has(tileKey);
+      if (!tweetIds || tweetIds.length === 0) {
+        return;
       }
 
-      const toObject = Cesium.Cartesian3.subtract(billboard.position, viewer.camera.positionWC, scratchToObject);
-      const isFront = Cesium.Cartesian3.dot(viewer.camera.directionWC, toObject) > 0;
-      if (!isFront) {
-        billboard.show = false;
-        label.show = false;
-        continue;
+      for (let i = 0; i < tweetIds.length; i++) {
+        const rendered = renderedTweetById.get(tweetIds[i]);
+        if (!rendered) {
+          continue;
+        }
+        const billboard = rendered.billboard;
+        const label = rendered.label;
+
+        if (!tileVisible) {
+          billboard.show = false;
+          label.show = false;
+          continue;
+        }
+
+        if (visibleFilterIds && !visibleFilterIds.has(billboard.id)) {
+          billboard.show = false;
+          label.show = false;
+          continue;
+        }
+
+        const toObject = Cesium.Cartesian3.subtract(billboard.position, viewer.camera.positionWC, scratchToObject);
+        const isFront = Cesium.Cartesian3.dot(viewer.camera.directionWC, toObject) > 0;
+        if (!isFront) {
+          billboard.show = false;
+          label.show = false;
+          continue;
+        }
+
+        const windowPosition = projectToWindowCoordinates
+          ? projectToWindowCoordinates(viewer.scene, billboard.position, scratchWindow)
+          : null;
+        const isOnScreen =
+          !!windowPosition &&
+          windowPosition.x >= -cullMarginPx &&
+          windowPosition.x <= canvas.clientWidth + cullMarginPx &&
+          windowPosition.y >= -cullMarginPx &&
+          windowPosition.y <= canvas.clientHeight + cullMarginPx;
+
+        billboard.show = isOnScreen;
+        label.show = isOnScreen;
       }
-
-      const windowPosition = projectToWindowCoordinates
-        ? projectToWindowCoordinates(viewer.scene, billboard.position, scratchWindow)
-        : null;
-      const isOnScreen =
-        !!windowPosition &&
-        windowPosition.x >= -cullMarginPx &&
-        windowPosition.x <= canvas.clientWidth + cullMarginPx &&
-        windowPosition.y >= -cullMarginPx &&
-        windowPosition.y <= canvas.clientHeight + cullMarginPx;
-
-      billboard.show = isOnScreen;
-      label.show = isOnScreen;
-    }
+    });
 
     viewer.scene.requestRender();
   }
@@ -486,7 +508,7 @@
     };
   }
 
-  function buildVisibleTileKeySet() {
+  function buildVisibleTileKeySet(prefetchMargin) {
     const tileKeys = new Set();
     if (!tweetTileIndex) {
       return tileKeys;
@@ -508,10 +530,11 @@
       const segment = lonSegments[i];
       const min = lonLatToTileXY(segment[0], northDeg, zoom);
       const max = lonLatToTileXY(segment[1], southDeg, zoom);
-      const minX = Math.min(min.x, max.x) - tilePrefetchMargin;
-      const maxX = Math.max(min.x, max.x) + tilePrefetchMargin;
-      const minY = Math.min(min.y, max.y) - tilePrefetchMargin;
-      const maxY = Math.max(min.y, max.y) + tilePrefetchMargin;
+      const margin = typeof prefetchMargin === "number" ? prefetchMargin : tilePrefetchMargin;
+      const minX = Math.min(min.x, max.x) - margin;
+      const maxX = Math.max(min.x, max.x) + margin;
+      const minY = Math.min(min.y, max.y) - margin;
+      const maxY = Math.max(min.y, max.y) + margin;
       const tileCount = Math.pow(2, zoom);
 
       for (let x = minX; x <= maxX; x++) {
@@ -530,6 +553,45 @@
     return tileKeys;
   }
 
+  function getTweetIconImage(iconName) {
+    const fileName = iconName || "twitter.png";
+    let img = tweetIconImageByName.get(fileName);
+    if (img) {
+      return img;
+    }
+    img = new Image();
+    img.src = "data/icon/flags/" + fileName;
+    tweetIconImageByName.set(fileName, img);
+    return img;
+  }
+
+  function acquireTweetPrimitive() {
+    const pooledBillboard = billboardPool.pop();
+    const pooledLabel = labelPool.pop();
+    if (pooledBillboard && pooledLabel) {
+      return {
+        billboard: pooledBillboard,
+        label: pooledLabel,
+      };
+    }
+    return {
+      billboard: tweetBillboards.add({ show: false }),
+      label: tweetLabels.add({ show: false }),
+    };
+  }
+
+  function releaseTweetPrimitive(rendered) {
+    if (!rendered) {
+      return;
+    }
+    rendered.billboard.show = false;
+    rendered.billboard.id = undefined;
+    rendered.label.show = false;
+    rendered.label.id = undefined;
+    billboardPool.push(rendered.billboard);
+    labelPool.push(rendered.label);
+  }
+
   function addTweetToScene(tweet, tileKey) {
     if (!tweet || renderedTweetById.has(tweet.id)) {
       return;
@@ -538,33 +600,35 @@
     const name = tweet.text.length > labelSliceText ? tweet.text.slice(0, labelSliceText) + "..." : tweet.text;
     const height = 200 + 500 * Math.random();
     const position = Cesium.Cartesian3.fromDegrees(tweet.lon, tweet.lat, height);
+    const rendered = acquireTweetPrimitive();
+    const billboard = rendered.billboard;
+    const label = rendered.label;
 
-    const billboard = tweetBillboards.add({
-      id: tweet.id,
-      position: position,
-      image: "data/icon/flags/" + tweet.img,
-      scale: 0.25,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: translucencyByDistance,
-    });
+    billboard.id = tweet.id;
+    billboard.position = position;
+    billboard.image = getTweetIconImage(tweet.img);
+    billboard.scale = 0.25;
+    billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+    billboard.translucencyByDistance = translucencyByDistance;
+    billboard.show = true;
 
-    const label = tweetLabels.add({
-      id: tweet.id,
-      position: position,
-      font: "11pt Sans-Serif",
-      style: Cesium.LabelStyle.FILL,
-      fillColor: Cesium.Color.WHITE,
-      pixelOffset: labelPixelOffset,
-      text: name,
-      scaleByDistance: labelScaleByDistance,
-      verticalOrigin: labelVerticalOrigin,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: translucencyByDistance,
-    });
+    label.id = tweet.id;
+    label.position = position;
+    label.font = "11pt Sans-Serif";
+    label.style = Cesium.LabelStyle.FILL;
+    label.fillColor = Cesium.Color.WHITE;
+    label.pixelOffset = labelPixelOffset;
+    label.text = name;
+    label.scaleByDistance = labelScaleByDistance;
+    label.verticalOrigin = labelVerticalOrigin;
+    label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+    label.translucencyByDistance = translucencyByDistance;
+    label.show = true;
 
     renderedTweetById.set(tweet.id, {
       billboard: billboard,
       label: label,
+      tileKey: tileKey,
     });
   }
 
@@ -580,8 +644,7 @@
       if (!rendered) {
         continue;
       }
-      tweetBillboards.remove(rendered.billboard);
-      tweetLabels.remove(rendered.label);
+      releaseTweetPrimitive(rendered);
       renderedTweetById.delete(tweetId);
     }
 
@@ -641,7 +704,8 @@
       return;
     }
 
-    const targetTileKeys = buildVisibleTileKeySet();
+    currentVisibleTileKeys = buildVisibleTileKeySet(0);
+    const targetTileKeys = buildVisibleTileKeySet(tilePrefetchMargin);
     const loadPromises = [];
 
     loadedTileKeys.forEach(function (loadedTileKey) {
@@ -1035,11 +1099,11 @@
       return;
     }
 
-    for (let i = 0; i < tweetBillboards.length; i++) {
-      const billboard = tweetBillboards.get(i);
-      const label = tweetLabels.get(i);
+    renderedTweetById.forEach(function (rendered, tweetId) {
+      const billboard = rendered.billboard;
+      const label = rendered.label;
 
-      const matched = !matchedIdSet || matchedIdSet.has(billboard.id);
+      const matched = !matchedIdSet || matchedIdSet.has(tweetId);
       if (matched) {
         if (searchQuery === "") {
           billboard.translucencyByDistance = translucencyByDistance;
@@ -1052,7 +1116,7 @@
         billboard.translucencyByDistance = translucencyByDistance;
         label.translucencyByDistance = translucencyByDistance;
       }
-    }
+    });
 
     visibleFilterIds = matchedIdSet;
     updateVisibleTweets();
