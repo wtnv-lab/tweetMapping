@@ -68,7 +68,9 @@
   const loadedTileKeys = new Set();
   const loadingTileKeys = new Set();
   const tileTweetIds = new Map();
+  const tweetIconUrlByName = new Map();
   const tweetIconImageByName = new Map();
+  const tweetIconLoadPromiseByName = new Map();
   const billboardPool = [];
   const labelPool = [];
 
@@ -81,6 +83,8 @@
   let labelSliceText;
   let tweetBillboards;
   let tweetLabels;
+  let renderPumpFrame = null;
+  let renderPumpUntil = 0;
 
   let visibleFilterIds = null;
   let cullingEnabled = false;
@@ -553,16 +557,117 @@
     return tileKeys;
   }
 
-  function getTweetIconImage(iconName) {
-    const fileName = iconName || "twitter.png";
-    let img = tweetIconImageByName.get(fileName);
-    if (img) {
-      return img;
+  function requestSceneRender() {
+    if (viewer && viewer.scene) {
+      viewer.scene.requestRender();
     }
-    img = new Image();
-    img.src = "data/icon/flags/" + fileName;
-    tweetIconImageByName.set(fileName, img);
-    return img;
+  }
+
+  function requestSceneRenderFor(durationMs) {
+    requestSceneRender();
+    if (typeof window.requestAnimationFrame !== "function") {
+      return;
+    }
+    renderPumpUntil = Math.max(renderPumpUntil, Date.now() + durationMs);
+    if (renderPumpFrame !== null) {
+      return;
+    }
+
+    const pump = function () {
+      requestSceneRender();
+      if (Date.now() < renderPumpUntil) {
+        renderPumpFrame = window.requestAnimationFrame(pump);
+      } else {
+        renderPumpFrame = null;
+      }
+    };
+    renderPumpFrame = window.requestAnimationFrame(pump);
+  }
+
+  function getTweetIconUrl(iconName) {
+    const fileName = iconName || "twitter.png";
+    let imageUrl = tweetIconUrlByName.get(fileName);
+    if (imageUrl) {
+      return imageUrl;
+    }
+    imageUrl = "data/icon/flags/" + fileName;
+    tweetIconUrlByName.set(fileName, imageUrl);
+    return imageUrl;
+  }
+
+  function loadTweetIcon(iconName) {
+    const fileName = iconName || "twitter.png";
+    const loadedImage = tweetIconImageByName.get(fileName);
+    if (loadedImage) {
+      return Promise.resolve(loadedImage);
+    }
+    const pending = tweetIconLoadPromiseByName.get(fileName);
+    if (pending) {
+      return pending;
+    }
+
+    const imageUrl = getTweetIconUrl(fileName);
+    const promise = new Promise(function (resolve) {
+      const img = new Image();
+      let settled = false;
+      const timeoutId = window.setTimeout(function () {
+        finish(null);
+      }, 3000);
+      const finish = function (image) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        window.clearTimeout(timeoutId);
+        if (image && image.naturalWidth > 0) {
+          tweetIconImageByName.set(fileName, image);
+          requestSceneRenderFor(900);
+          resolve(image);
+        } else {
+          requestSceneRenderFor(900);
+          resolve(null);
+        }
+      };
+      const finishLoaded = function () {
+        if (typeof img.decode === "function") {
+          img.decode().then(
+            function () {
+              finish(img);
+            },
+            function () {
+              finish(img);
+            }
+          );
+        } else {
+          finish(img);
+        }
+      };
+      img.onload = finishLoaded;
+      img.onerror = function () {
+        finish(null);
+      };
+      img.src = imageUrl;
+      if (img.complete) {
+        finishLoaded();
+      }
+    });
+    tweetIconLoadPromiseByName.set(fileName, promise);
+    return promise;
+  }
+
+  function applyTweetBillboardImage(billboard, iconName) {
+    const fileName = iconName || "twitter.png";
+    const loadedImage = tweetIconImageByName.get(fileName);
+    if (loadedImage && typeof billboard.setImage === "function") {
+      billboard.setImage(fileName, loadedImage);
+      return true;
+    }
+    if (loadedImage) {
+      billboard.image = loadedImage;
+      return true;
+    }
+    billboard.image = getTweetIconUrl(fileName);
+    return false;
   }
 
   function acquireTweetPrimitive() {
@@ -603,10 +708,10 @@
     const rendered = acquireTweetPrimitive();
     const billboard = rendered.billboard;
     const label = rendered.label;
+    const iconReady = applyTweetBillboardImage(billboard, tweet.img);
 
     billboard.id = tweet.id;
     billboard.position = position;
-    billboard.image = getTweetIconImage(tweet.img);
     billboard.scale = 0.25;
     billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
     billboard.translucencyByDistance = translucencyByDistance;
@@ -630,6 +735,17 @@
       label: label,
       tileKey: tileKey,
     });
+
+    if (!iconReady) {
+      loadTweetIcon(tweet.img).then(function (image) {
+        const current = renderedTweetById.get(tweet.id);
+        if (!image || !current || current.billboard !== billboard) {
+          return;
+        }
+        applyTweetBillboardImage(billboard, tweet.img);
+        requestSceneRenderFor(900);
+      });
+    }
   }
 
   function removeTileFromScene(tileKey) {
@@ -788,22 +904,25 @@
     labelVerticalOrigin = Cesium.VerticalOrigin.CENTER;
     labelSliceText = isSmartphone ? 10 : 20;
 
-    $.getJSON(tweetTileIndexUrl)
-      .done(function (indexData) {
-        tweetTileIndex = indexData;
-        loadSearchIndex().always(function () {
-          scheduleTileLoadByView();
-          viewer.camera.changed.addEventListener(scheduleTileLoadByView);
-          window.addEventListener("resize", scheduleTileLoadByView);
+    loadTweetIcon("twitter.png").then(function () {
+      $.getJSON(tweetTileIndexUrl)
+        .done(function (indexData) {
+          tweetTileIndex = indexData;
+          loadSearchIndex().always(function () {
+            scheduleTileLoadByView();
+            viewer.camera.changed.addEventListener(scheduleTileLoadByView);
+            window.addEventListener("resize", scheduleTileLoadByView);
+          });
+        })
+        .fail(function () {
+          $.getJSON(legacyTweetJsonUrl).done(convertLegacyTweetsToTileIndex);
         });
-      })
-      .fail(function () {
-        $.getJSON(legacyTweetJsonUrl).done(convertLegacyTweetsToTileIndex);
-      });
+    });
   }
 
   function finishLoading() {
     applyTweetDisplayTone();
+    requestSceneRenderFor(1500);
     setTimeout(function () {
       fadeInOut(blackOutDiv, 0);
       fadeInOut(loadingDiv, 0);
